@@ -1204,7 +1204,7 @@ function ProductModal({
                   {/* Purchase Details — shown for both Grocery & Garments */}
                   <SuggestionInput
                     label="Invoice Number"
-                    value={form.invoiceNumber}
+                    value={form.invoiceNumber || ""}
                     onChange={(v) => set("invoiceNumber", v)}
                     suggestions={invoiceSuggestions}
                     placeholder="e.g. INV-001"
@@ -1421,12 +1421,15 @@ export default function ProductsPage() {
       try {
         setLoading(true);
         const storeId = localStorage.getItem('activeStoreId');
-        if (storeId) {
-          const storeRes = await api.get(`/stores/${storeId}`);
+        
+        const [storeRes, res] = await Promise.all([
+          storeId ? api.get(`/stores/${storeId}`).catch(() => null) : Promise.resolve(null),
+          api.get('/products')
+        ]);
+
+        if (storeRes?.data) {
           setStore(storeRes.data);
         }
-
-        const res = await api.get('/products');
         const mapped = res.data.map((p: any) => ({
           id: p.id,
           name: p.name,
@@ -1495,27 +1498,27 @@ export default function ProductsPage() {
 
   // Dynamic suggestions derived from existing products
   const nameSuggestions = useMemo(() =>
-    Array.from(new Set(products.map((p) => p.name).filter(Boolean))),
+    Array.from(new Set(products.map((p) => p.name).filter((x): x is string => Boolean(x)))),
     [products]);
 
   const categorySuggestions = useMemo(() =>
-    Array.from(new Set(products.map((p) => p.category).filter(Boolean))),
+    Array.from(new Set(products.map((p) => p.category).filter((x): x is string => Boolean(x)))),
     [products]);
 
   const genderSuggestions = useMemo(() =>
-    Array.from(new Set(products.map((p) => p.gender).filter(Boolean))),
+    Array.from(new Set(products.map((p) => p.gender).filter((x): x is string => Boolean(x)))),
     [products]);
 
   const brandSuggestions = useMemo(() =>
-    Array.from(new Set(products.map((p) => p.brand).filter(Boolean))),
+    Array.from(new Set(products.map((p) => p.brand).filter((x): x is string => Boolean(x)))),
     [products]);
 
   const fabricSuggestions = useMemo(() =>
-    Array.from(new Set(products.map((p) => p.fabric).filter(Boolean))),
+    Array.from(new Set(products.map((p) => p.fabric).filter((x): x is string => Boolean(x)))),
     [products]);
 
   const colorSuggestions = useMemo(() =>
-    Array.from(new Set(products.map((p) => p.color).filter(Boolean))),
+    Array.from(new Set(products.map((p) => p.color).filter((x): x is string => Boolean(x)))),
     [products]);
 
   const invoiceSuggestions = useMemo(
@@ -1524,7 +1527,7 @@ export default function ProductsPage() {
         new Set(
           products
             .map((p) => p.invoiceNumber)
-            .filter(Boolean)
+            .filter((x): x is string => Boolean(x))
         )
       ),
     [products]
@@ -1536,7 +1539,7 @@ export default function ProductsPage() {
         new Set(
           products
             .map((p) => p.purchaseDate)
-            .filter(Boolean)
+            .filter((x): x is string => Boolean(x))
         )
       ),
     [products]

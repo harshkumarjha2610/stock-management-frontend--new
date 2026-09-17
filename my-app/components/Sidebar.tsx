@@ -1237,10 +1237,11 @@ export default function Sidebar({
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const profileRes = await api.get("/users/profile");
+        const [profileRes, response] = await Promise.all([
+          api.get("/users/profile"),
+          api.get("/stores")
+        ]);
         const dbLastActiveId = profileRes.data.last_active_store_id?.toString();
-
-        const response = await api.get("/stores");
         const mappedStores = (response.data as BackendStore[]).map(mapStore);
         setShops(mappedStores);
 
