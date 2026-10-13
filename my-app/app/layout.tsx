@@ -8,6 +8,7 @@ import {
   JetBrains_Mono,
 } from "next/font/google";
 import ThemeProvider from "@/components/ThemeProvider";
+import ToastProvider from "@/components/ToastProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -59,20 +60,23 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${poppins.variable} ${robotoSlab.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background text-foreground relative z-0">
         <ThemeProvider>
-          <div className="app-background">
-            <div className="orb-top-right"></div>
+          <ToastProvider>
+            <div className="app-background">
+              <div className="orb-top-right"></div>
 
-            <div className="purple-glow"></div>
+              <div className="purple-glow"></div>
 
-            <div className="orb-bottom-left"></div>
+              <div className="orb-bottom-left"></div>
 
-            <div className="orb-center"></div>
-          </div>
-          {children}
+              <div className="orb-center"></div>
+            </div>
+            {children}
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

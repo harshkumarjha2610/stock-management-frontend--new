@@ -11,6 +11,8 @@ import {
 import { api } from "@/lib/api";
 import Barcode from "@/components/Barcode";
 import JsBarcode from "jsbarcode";
+import { useStore } from "@/components/StoreContext";
+import { toast } from "@/components/ToastProvider";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -757,13 +759,14 @@ function ProductModal({
         id: res.data.id,
         barcode: res.data.barcode,
         barcodeImageUrl: res.data.barcode_image_url,
-        createdDate: res.data.created_at?.split('T')[0] || new Date().toISOString().split('T')[0]
+        createdDate: (res.data.createdAt || res.data.created_at || product?.createdDate || new Date().toISOString())
       } as Product;
 
       onSave(saved);
       onClose();
+      toast.success(product ? "Product updated successfully!" : "Product created successfully!", product ? "Product Updated" : "Product Created");
     } catch (error: any) {
-      alert(error.message || "Failed to save product");
+      toast.error(error.message || "Failed to save product", "Save Failed");
     } finally {
       setLoading(false);
     }
@@ -783,7 +786,7 @@ function ProductModal({
   function printBarcodeLabel(p: Product) {
     const barcodeValue = p.barcode;
     if (!barcodeValue) {
-      alert("No barcode number available for this product.");
+      toast.warning("No barcode number available for this product.", "Barcode Missing");
       return;
     }
 
@@ -798,7 +801,7 @@ function ProductModal({
         margin: 5,
       });
     } catch (error) {
-      alert("Failed to draw barcode for printing.");
+      toast.error("Failed to draw barcode for printing.", "Barcode Error");
       return;
     }
     const barcodeSvg = svg.outerHTML;
@@ -939,7 +942,7 @@ function ProductModal({
                   { label: "SKU", value: product.sku || "—" },
                   { label: "Min Stock Alert", value: `${product.minStockAlert} pcs` },
                   { label: "Total Stock", value: `${total} pcs` },
-                  { label: "Added On", value: product.createdDate ? new Date(product.createdDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—" },
+                  { label: "Added On", value: product.createdDate && !isNaN(new Date(product.createdDate).getTime()) ? new Date(product.createdDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—" },
                   { label: "Invoice Number", value: product.invoiceNumber || "—" },
                   { label: "Purchase Date", value: product.purchaseDate ? new Date(product.purchaseDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—" },
                 ].map((d) => (
@@ -1104,7 +1107,7 @@ function ProductModal({
                     value={form.name}
                     onChange={(v) => set("name", v)}
                     suggestions={nameSuggestions}
-                    placeholder="e.g. Classic White Formal Shirt"
+                    placeholder={isGrocery ? "e.g. Amul Full Cream Milk, Tata Salt" : "e.g. Classic White Formal Shirt"}
                     error={errors.name}
                     span={2}
                   />
@@ -1117,7 +1120,7 @@ function ProductModal({
                       if (!isGrocery) set("sizes", []);
                     }}
                     suggestions={categorySuggestions}
-                    placeholder="e.g. T-Shirt, Shirt, Pant"
+                    placeholder={isGrocery ? "e.g. Dairy, Staples, Beverages" : "e.g. T-Shirt, Shirt, Pant"}
                   />
 
                   {!isGrocery ? (
@@ -1339,7 +1342,7 @@ function ProductModal({
               <div>
                 <p className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-4">Extra</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Min Stock Alert">
+                  <Field label={isGrocery ? `Min Stock Alert (${form.unit || "units"})` : "Min Stock Alert (pcs)"}>
                     <input
                       type="number"
                       min={0}
@@ -1352,7 +1355,7 @@ function ProductModal({
                   <div />
                   <Field label="Description" span={2}>
                     <textarea
-                      placeholder="Fabric details, care instructions, style notes…"
+                      placeholder={isGrocery ? "Storage instructions, ingredients, allergens…" : "Fabric details, care instructions, style notes…"}
                       value={form.description}
                       onChange={(e) => set("description", e.target.value)}
                       rows={3}
@@ -1368,12 +1371,17 @@ function ProductModal({
               <ImageUploader value={form.image} onChange={(url) => set("image", url)} />
               <div className="mt-5 space-y-2">
                 <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">Tips</p>
-                {[
+                {(isGrocery ? [
+                  "Show the product packaging clearly",
+                  "Include label with brand & weight",
+                  "Use natural or white background",
+                  "PNG or JPG, max 5MB",
+                ] : [
                   "Use a clean white background",
                   "Show full garment front view",
                   "PNG or JPG recommended",
                   "Max 5MB file size",
-                ].map((t) => (
+                ]).map((t) => (
                   <div key={t} className="flex items-start gap-2">
                     <CheckCircle size={12} className="text-green-500 mt-0.5 shrink-0" />
                     <p className="text-xs text-text-secondary">{t}</p>
@@ -1412,6 +1420,7 @@ function ProductModal({
 // ═══════════════════════════════════════════════════════════════
 
 export default function ProductsPage() {
+  const { activeStoreId } = useStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [store, setStore] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -1420,10 +1429,9 @@ export default function ProductsPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        const storeId = localStorage.getItem('activeStoreId');
-        
+
         const [storeRes, res] = await Promise.all([
-          storeId ? api.get(`/stores/${storeId}`).catch(() => null) : Promise.resolve(null),
+          activeStoreId ? api.get(`/stores/${activeStoreId}`).catch(() => null) : Promise.resolve(null),
           api.get('/products')
         ]);
 
@@ -1454,7 +1462,7 @@ export default function ProductsPage() {
           barcode: p.barcode,
           barcodeImageUrl: p.barcode_image_url,
           image: p.image_url,
-          createdDate: p.created_at?.split('T')[0],
+          createdDate: p.createdAt || p.created_at || "",
           invoiceNumber: p.invoice_number,
           purchaseDate: p.purchase_date,
           sizes: p.sizes?.map((s: any) => ({
@@ -1472,7 +1480,7 @@ export default function ProductsPage() {
       }
     }
     fetchData();
-  }, []);
+  }, [activeStoreId]);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("All");
   const [genderFilter, setGenderFilter] = useState("All");
@@ -1592,6 +1600,7 @@ export default function ProductsPage() {
       }
       return [p, ...prev];
     });
+    window.dispatchEvent(new Event("sidebar-counts-update"));
   }
 
   async function handleDelete(id: string) {
@@ -1600,8 +1609,10 @@ export default function ProductsPage() {
       await api.delete(`/products/${id}`);
       setProducts((prev) => prev.filter((p) => p.id !== id));
       setDeleteId(null);
+      window.dispatchEvent(new Event("sidebar-counts-update"));
+      toast.success("Product deleted successfully", "Product Deleted");
     } catch (error: any) {
-      alert(error.message || "Failed to delete product");
+      toast.error(error.message || "Failed to delete product", "Delete Failed");
     }
   }
 

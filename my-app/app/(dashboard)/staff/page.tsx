@@ -9,6 +9,7 @@ import {
   EyeOff
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { toast } from "@/components/ToastProvider";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -408,8 +409,9 @@ export default function StaffManagementPage() {
         setSalaryList(salRes.data.map((s: any) => normalizeSalaryRecord(s)));
       }
       setShowStaffModal(false);
+      toast.success(editingStaff ? "Staff member updated successfully" : "Staff member added successfully", editingStaff ? "Staff Updated" : "Staff Created");
     } catch (error: any) {
-      alert(error.message || "Failed to save staff");
+      toast.error(error.message || "Failed to save staff", "Save Failed");
     } finally {
       setSaving(false);
     }
@@ -445,8 +447,9 @@ export default function StaffManagementPage() {
         }
         return [...p, newAtt];
       });
+      toast.success(`Attendance marked as ${status}`, "Status Updated");
     } catch (error: any) {
-      alert(error.message || "Failed to update status");
+      toast.error(error.message || "Failed to update status", "Update Failed");
     } finally {
       setSaving(false);
       setMarkModal(null);
@@ -460,8 +463,9 @@ export default function StaffManagementPage() {
       await api.delete(`/staff/${id}`);
       setStaffList((p) => p.filter((s) => s.id !== id));
       setDeleteStaffId(null);
+      toast.success("Staff member deleted successfully", "Staff Deleted");
     } catch (error: any) {
-      alert(error.message || "Failed to delete staff");
+      toast.error(error.message || "Failed to delete staff", "Delete Failed");
     } finally {
       setSaving(false);
     }
@@ -481,8 +485,9 @@ export default function StaffManagementPage() {
           workingHours: parseFloat(res.data.working_hours || 0)
         } : a)
       );
+      toast.success(`Check-out recorded at ${time}`, "Check-Out Complete");
     } catch (error: any) {
-      alert(error.message || "Failed to check out");
+      toast.error(error.message || "Failed to check out", "Check-Out Failed");
     } finally {
       setSaving(false);
       setCheckoutModal(null);
@@ -520,8 +525,9 @@ export default function StaffManagementPage() {
         }
         return [...p, newAtt];
       });
+      toast.success(`${staff.name} checked in at ${time}`, "Check-In Complete");
     } catch (error: any) {
-      alert(error.message || "Failed to check in");
+      toast.error(error.message || "Failed to check in", "Check-In Failed");
     } finally {
       setSaving(false);
       setCheckinModal(null);
@@ -564,8 +570,9 @@ export default function StaffManagementPage() {
             : s
         )
       );
+      toast.success(`Salary marked as paid for ${rec.staffName}`, "Payment Recorded");
     } catch (error: any) {
-      alert(error.message || "Failed to mark salary as paid");
+      toast.error(error.message || "Failed to mark salary as paid", "Payment Failed");
     } finally {
       setSaving(false);
       setPayModal(null);
@@ -598,8 +605,9 @@ export default function StaffManagementPage() {
       const res = await api.post('/salaries', payload);
       setSalaryList((p) => [normalizeSalaryRecord(res.data), ...p]);
       setPayStaffModal(null);
+      toast.success(`Salary of ₹${payStaffSummary.netPay.toLocaleString()} recorded for ${payStaffModal.staff.name}`, "Salary Processed");
     } catch (error: any) {
-      alert(error.message || "Failed to process salary payment");
+      toast.error(error.message || "Failed to process salary payment", "Payment Failed");
     } finally {
       setSaving(false);
     }
@@ -632,8 +640,9 @@ export default function StaffManagementPage() {
 
       setShowMarkModal(false);
       setMarkForm({ staffId: "", dates: [TODAY], status: "PRESENT" });
+      toast.success("Attendance marked successfully", "Attendance Updated");
     } catch (error: any) {
-      alert(error.message || "Failed to mark attendance");
+      toast.error(error.message || "Failed to mark attendance", "Attendance Failed");
     } finally {
       setLoading(false);
     }

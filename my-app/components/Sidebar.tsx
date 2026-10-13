@@ -32,9 +32,11 @@ import {
   Percent,
 } from "lucide-react";
 import { type LucideIcon } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
+import { useStore } from "@/components/StoreContext";
+import { toast } from "@/components/ToastProvider";
 
 type NavItem = {
   label: string;
@@ -109,9 +111,9 @@ function getErrorMessage(err: unknown, fallback: string) {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", category: "Dashboard", icon: LayoutDashboard, color: "text-[#A05AFF]", bg: "bg-[#A05AFF]/10" },
-  { label: "Products", href: "/products", category: "Business", icon: Package, badge: 3, color: "text-[#1BCFB4]", bg: "bg-[#1BCFB4]/10" },
+  { label: "Products", href: "/products", category: "Business", icon: Package, color: "text-[#1BCFB4]", bg: "bg-[#1BCFB4]/10" },
   { label: "Billing", href: "/billing", category: "Business", icon: Receipt, color: "text-[#FE9496]", bg: "bg-[#FE9496]/10" },
-  { label: "Orders", href: "/orders", category: "Business", icon: ShoppingCart, badge: 12, color: "text-[#4BCBEB]", bg: "bg-[#4BCBEB]/10" },
+  { label: "Orders", href: "/orders", category: "Business", icon: ShoppingCart, color: "text-[#4BCBEB]", bg: "bg-[#4BCBEB]/10" },
   { label: "Customers", href: "/customers", category: "Business", icon: Users, color: "text-[#A05AFF]", bg: "bg-[#A05AFF]/10" },
   { label: "Discount", href: "/discount", category: "Business", icon: Percent, color: "text-[#FFD166]", bg: "bg-[#FFD166]/10" },
   { label: "Reports", href: "/reports", category: "Analytics", icon: BarChart3, color: "text-[#FE9496]", bg: "bg-[#FE9496]/10" },
@@ -426,8 +428,8 @@ function EditStoreModal({
     phone: shop.phone,
     upiId: shop.upiId,
     upiPayeeName: shop.upiPayeeName,
-    category: shop.category,
     logoUrl: shop.logoUrl,
+    // category is NOT in form state — it is locked after creation (read from shop.category directly)
   });
   const [admins, setAdmins] = useState<StoreAdmin[]>(shop.admins);
   const [errors, setErrors] = useState<Partial<typeof form>>({});
@@ -452,7 +454,7 @@ function EditStoreModal({
       phone: form.phone.trim(),
       upiId: form.upiId.trim(),
       upiPayeeName: form.upiPayeeName.trim(),
-      category: form.category,
+      // category intentionally omitted — locked after creation
       logoUrl: form.logoUrl,
       admins,
     });
@@ -581,8 +583,24 @@ function EditStoreModal({
                   </Field>
 
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-2">Category</label>
-                    <CategorySelector value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
+                    <label className="block text-xs font-medium text-muted mb-2">
+                      Store Type
+                      <span className="ml-1.5 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full align-middle">
+                        🔒 Fixed at creation
+                      </span>
+                    </label>
+                    {/* Category is locked after creation — shown as read-only */}
+                    <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-semibold w-fit ${
+                      shop.category === 'GARMENTS'
+                        ? 'text-purple-600 bg-purple-50 border-purple-200'
+                        : 'text-green-600 bg-green-50 border-green-200'
+                    }`}>
+                      {shop.category === 'GARMENTS'
+                        ? <ShoppingBag size={15} />
+                        : <Salad size={15} />}
+                      {shop.category === 'GARMENTS' ? 'Garments' : 'Grocery'}
+                    </div>
+                    <p className="text-[11px] text-muted/60 mt-1.5">Store type cannot be changed after creation.</p>
                   </div>
                 </div>
               </form>
@@ -1189,6 +1207,7 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const { theme } = useTheme();
+  const { activeStoreId, setActiveStore } = useStore();
 
   const [shops, setShops] = useState<Shop[]>([]);
   const [activeShopId, setActiveShopId] = useState<string | null>(null);
@@ -1197,6 +1216,9 @@ export default function Sidebar({
   const [editShop, setEditShop] = useState<Shop | null>(null);
   const [user, setUser] = useState<StoredUser | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
+  const [productCount, setProductCount] = useState<number | null>(null);
+  const [orderCount, setOrderCount] = useState<number | null>(null);
 
   useEffect(() => {
     try {
@@ -1275,14 +1297,25 @@ export default function Sidebar({
   }
 
   async function switchStore(id: string) {
+    if (id === activeShopId) {
+      setShowSwitcher(false);
+      return;
+    }
+    setIsSwitching(true);
+    setProductCount(null);
+    setOrderCount(null);
     try {
       setActiveShopId(id);
-      localStorage.setItem("activeStoreId", id);
+      // Update context — triggers re-fetch in all pages listening to activeStoreId
+      setActiveStore(id);
       await api.patch("/users/active-store", { storeId: Number(id) });
-      window.location.reload();
     } catch (err) {
       console.error("Failed to sync active store to DB:", err);
-      window.location.reload();
+    } finally {
+      router.refresh();
+      setShowSwitcher(false);
+      // Keep overlay up briefly while Next.js re-fetches, then fade out
+      setTimeout(() => setIsSwitching(false), 600);
     }
   }
 
@@ -1307,8 +1340,9 @@ export default function Sidebar({
         switchStore(newStore.id);
       }
       setShowCreateStore(false);
+      toast.success(`Store "${newStore.name}" created successfully`, "Store Created");
     } catch (err: unknown) {
-      alert(getErrorMessage(err, "Failed to create store"));
+      toast.error(getErrorMessage(err, "Failed to create store"), "Store Creation Failed");
     }
   }
 
@@ -1330,29 +1364,117 @@ export default function Sidebar({
       const updatedStore = mapStore(response.data);
       setShops((prev) => prev.map((s) => (s.id === updatedStore.id ? updatedStore : s)));
       setEditShop(null);
+      toast.success(`Store "${updatedStore.name}" updated successfully`, "Store Updated");
     } catch (err: unknown) {
-      alert(getErrorMessage(err, "Failed to update store"));
+      toast.error(getErrorMessage(err, "Failed to update store"), "Update Failed");
     }
   }
+
+  const currentStoreId = activeShopId || activeStoreId;
+
+  const fetchCounts = useCallback(async () => {
+    if (!currentStoreId) return;
+    try {
+      const [prodRes, billRes] = await Promise.allSettled([
+        api.get("/products"),
+        api.get("/bills"),
+      ]);
+
+      if (prodRes.status === "fulfilled") {
+        const d = prodRes.value?.data;
+        const count = Array.isArray(d) ? d.length : (d?.total ?? d?.count ?? 0);
+        setProductCount(count);
+      }
+      if (billRes.status === "fulfilled") {
+        const d = billRes.value?.data;
+        const count = Array.isArray(d) ? d.length : (d?.total ?? d?.count ?? 0);
+        setOrderCount(count);
+      }
+    } catch (err) {
+      console.error("Failed to fetch sidebar counts:", err);
+    }
+  }, [currentStoreId]);
+
+  useEffect(() => {
+    fetchCounts();
+
+    const handleUpdate = () => {
+      fetchCounts();
+    };
+
+    window.addEventListener("sidebar-counts-update", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    return () => {
+      window.removeEventListener("sidebar-counts-update", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+    };
+  }, [fetchCounts, pathname]);
 
   const isSuperAdmin = !user || user.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "ADMIN";
   const isStaff = user?.role === "STAFF";
 
-  const visibleNavItems = navItems.filter((item) => {
-    if (isStaff) {
-      return ["Attendance"].includes(item.label);
-    }
-    if (isAdmin) {
-      if (["Dashboard", "Reports", "Settings", "Attendance"].includes(item.label)) return false;
-      return true;
-    }
-    if (item.label === "Attendance") return false;
-    return true;
-  });
+  const visibleNavItems = useMemo(() => {
+    return navItems
+      .filter((item) => {
+        if (isStaff) {
+          return ["Attendance"].includes(item.label);
+        }
+        if (isAdmin) {
+          if (["Dashboard", "Reports", "Settings", "Attendance"].includes(item.label)) return false;
+          return true;
+        }
+        if (item.label === "Attendance") return false;
+        return true;
+      })
+      .map((item) => {
+        if (item.label === "Products" && productCount !== null) {
+          return { ...item, badge: productCount };
+        }
+        if (item.label === "Orders" && orderCount !== null) {
+          return { ...item, badge: orderCount };
+        }
+        return item;
+      });
+  }, [isStaff, isAdmin, productCount, orderCount]);
 
   return (
     <>
+      {/* ── Store-switch smooth transition overlay ── */}
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          background: "rgba(15, 12, 30, 0.55)",
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
+          opacity: isSwitching ? 1 : 0,
+          pointerEvents: isSwitching ? "all" : "none",
+          transition: "opacity 0.3s ease",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          gap: "12px",
+        }}
+      >
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            border: "3px solid rgba(155,92,255,0.25)",
+            borderTopColor: "#9B5CFF",
+            animation: "spin 0.7s linear infinite",
+          }}
+        />
+        <p style={{ color: "#C084FC", fontSize: 13, fontWeight: 600, letterSpacing: "0.04em" }}>
+          Switching store…
+        </p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+
       <aside
         className={`flex h-full ${collapsed ? "w-24" : "w-64"
           } flex-col border-r border-sidebar-border bg-sidebar-bg backdrop-blur-xl overflow-y-auto transition-[width] duration-300`}
@@ -1496,7 +1618,7 @@ export default function Sidebar({
                                         await api.delete(`/stores/${shop.id}`);
                                         window.location.reload();
                                       } catch (err) {
-                                        alert("Failed to delete store: " + getErrorMessage(err, "Unknown error"));
+                                        toast.error(getErrorMessage(err, "Unknown error"), "Failed to Delete Store");
                                       }
                                     }
                                   }}

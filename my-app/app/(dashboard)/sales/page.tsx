@@ -6,6 +6,7 @@ import {
   CalendarDays, ChevronDown, X, Printer, Eye, Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useStore } from "@/components/StoreContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type PaymentMethod = "Cash" | "UPI" | "Card";
@@ -29,6 +30,7 @@ type Sale = {
   subTotal:       number;
   gstAmount:      number;
   discount:       number;
+  discountPercent?: number;
   finalTotal:     number;
   paymentMethod:  PaymentMethod;
   createdAt:      string;
@@ -49,6 +51,7 @@ const tabs: FilterTab[] = ["All", "Day", "Month", "Customer", "Product"];
 
 // ─── Main Component ─────────────────────────────────────────────────────────────
 export default function SalesPage() {
+  const { activeStoreId } = useStore();
   const [allSales, setAllSales]         = useState<Sale[]>([]);
   const [loading, setLoading]           = useState(true);
 
@@ -57,25 +60,27 @@ export default function SalesPage() {
       try {
         setLoading(true);
         const res = await api.get('/bills');
-        setAllSales(res.data.map((b: any) => ({
-          invoiceNumber: b.invoice_no,
-          customerName: b.customer?.name || "Walk-in",
-          customerPhone: b.customer?.phone || "—",
+        const rawList = Array.isArray(res.data) ? res.data : (res.data?.rows || []);
+        setAllSales(rawList.map((b: any) => ({
+          invoiceNumber: b.invoice_number || b.invoice_no || `INV-${String(b.id).padStart(5, '0')}`,
+          customerName: b.customer?.name || b.customer_name || "Walk-in",
+          customerPhone: b.customer?.phone || b.customer_phone || "—",
           items: b.items?.map((i: any) => ({
             productId: i.product_id,
-            productName: i.product?.name || "Unknown",
+            productName: i.product?.name || i.product_name || "Unknown",
             quantity: i.quantity,
-            rate: parseFloat(i.unit_price),
+            rate: parseFloat(i.unit_price || i.price || 0),
             gstPercent: parseFloat(i.gst_percent || 0),
             gstAmount: parseFloat(i.gst_amount || 0),
-            total: parseFloat(i.total_price)
+            total: parseFloat(i.total_price || (parseFloat(i.unit_price || 0) * i.quantity))
           })) || [],
-          subTotal: parseFloat(b.subtotal),
-          gstAmount: parseFloat(b.total_gst || 0),
-          discount: parseFloat(b.total_discount || 0),
-          finalTotal: parseFloat(b.total_amount),
+          subTotal: parseFloat(b.subtotal || b.total_amount || 0),
+          gstAmount: parseFloat(b.total_gst || b.gst_amount || 0),
+          discount: parseFloat(b.total_discount || b.discount || 0),
+          discountPercent: parseFloat(b.discount_percent || 0),
+          finalTotal: parseFloat(b.grand_total || b.final_amount || b.total_amount || 0),
           paymentMethod: (b.payment_method || "Cash") as PaymentMethod,
-          createdAt: b.createdAt?.split('T')[0]
+          createdAt: (b.created_at || b.createdAt || "").split('T')[0]
         })));
       } catch (error) {
         console.error("Failed to fetch sales", error);
@@ -84,7 +89,7 @@ export default function SalesPage() {
       }
     }
     fetchSales();
-  }, []);
+  }, [activeStoreId]);
 
   const [search, setSearch]             = useState("");
   const [activeTab, setActiveTab]       = useState<FilterTab>("All");
@@ -98,10 +103,10 @@ export default function SalesPage() {
     return allSales.filter((s) => {
       const q = search.toLowerCase();
       const matchSearch =
-        s.invoiceNumber.toLowerCase().includes(q)  ||
-        s.customerName.toLowerCase().includes(q)   ||
-        s.customerPhone.includes(q)                ||
-        s.items.some((i) => i.productName.toLowerCase().includes(q));
+        (s.invoiceNumber || "").toLowerCase().includes(q)  ||
+        (s.customerName || "").toLowerCase().includes(q)   ||
+        (s.customerPhone || "").includes(q)                ||
+        s.items.some((i) => (i.productName || "").toLowerCase().includes(q));
 
       const matchPm   = pmFilter === "All" || s.paymentMethod === pmFilter;
       const matchFrom = !dateFrom || s.createdAt >= dateFrom;
@@ -664,7 +669,11 @@ export default function SalesPage() {
                 <SummaryRow label="Subtotal"    value={fmt(viewSale.subTotal)}  />
                 <SummaryRow label="GST Total"   value={fmt(viewSale.gstAmount)} />
                 {viewSale.discount > 0 && (
-                  <SummaryRow label="Discount"  value={`− ${fmt(viewSale.discount)}`} valueClass="text-success font-semibold" />
+                  <SummaryRow
+                    label={viewSale.discountPercent && viewSale.discountPercent > 0 ? `Discount (${viewSale.discountPercent}%)` : "Discount"}
+                    value={`− ${fmt(viewSale.discount)}`}
+                    valueClass="text-success font-semibold"
+                  />
                 )}
                 <div className="border-t border-border pt-2">
                   <SummaryRow

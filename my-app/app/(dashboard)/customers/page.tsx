@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
+import { useStore } from "@/components/StoreContext";
+import { toast } from "@/components/ToastProvider";
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -315,6 +317,7 @@ function CustomerModal({
 
 export default function CustomersPage() {
   const { theme } = useTheme();
+  const { activeStoreId } = useStore();
   const isEnterprise = theme === "enterprise";
 
   const [customers,  setCustomers]  = useState<Customer[]>([]);
@@ -346,7 +349,7 @@ export default function CustomersPage() {
       }
     }
     fetchCustomers();
-  }, []);
+  }, [activeStoreId]);
 
   const [search,     setSearch]     = useState("");
   const [tagFilter,  setTagFilter]  = useState("All");
@@ -441,8 +444,9 @@ export default function CustomersPage() {
         };
         setCustomers((prev) => [newCustomer, ...prev]);
       }
+      toast.success(selected ? "Customer updated successfully" : "Customer created successfully", selected ? "Customer Updated" : "Customer Created");
     } catch (error: any) {
-      alert(error.message || "Failed to save customer");
+      toast.error(error.message || "Failed to save customer", "Save Failed");
     } finally {
       setLoading(false);
     }
@@ -454,8 +458,9 @@ export default function CustomersPage() {
       await api.delete(`/customers/${id}`);
       setCustomers((prev) => prev.filter((c) => c.id !== id));
       setDeleteId(null);
+      toast.success("Customer deleted successfully", "Customer Deleted");
     } catch (error: any) {
-      alert(error.message || "Failed to delete customer");
+      toast.error(error.message || "Failed to delete customer", "Delete Failed");
     } finally {
       setLoading(false);
     }

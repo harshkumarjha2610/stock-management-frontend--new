@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
+import { useStore } from "@/components/StoreContext";
+import { toast } from "@/components/ToastProvider";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -162,6 +164,7 @@ function ModalFooter({
 
 export default function StockPage() {
   const { theme } = useTheme();
+  const { activeStoreId } = useStore();
   const isEnterprise = theme === "enterprise";
 
   const [products, setProducts]   = useState<Product[]>([]);
@@ -208,7 +211,7 @@ export default function StockPage() {
       }
     }
     fetchData();
-  }, []);
+  }, [activeStoreId]);
 
   // ── Overview filters ──
   const [search, setSearch]             = useState("");
@@ -370,8 +373,9 @@ export default function StockPage() {
         )
       );
       setModal(null);
+      toast.success(`Added ${inForm.quantity} items to stock`, "Stock In Recorded");
     } catch (error: any) {
-      alert(error.message || "Failed to add stock");
+      toast.error(error.message || "Failed to add stock", "Stock In Failed");
     } finally {
       setLoading(false);
     }
@@ -384,7 +388,7 @@ export default function StockPage() {
       const prod = products.find((p) => p.id === outForm.productId);
       if (!prod) return;
       if (outForm.quantity > prod.currentStock) {
-        alert("Insufficient stock");
+        toast.warning(`Insufficient stock. Available: ${prod.currentStock}`, "Stock Limit Exceeded");
         return;
       }
 
@@ -422,8 +426,9 @@ export default function StockPage() {
         )
       );
       setModal(null);
+      toast.success(`Deducted ${outForm.quantity} items from stock`, "Stock Out Recorded");
     } catch (error: any) {
-      alert(error.message || "Failed to remove stock");
+      toast.error(error.message || "Failed to remove stock", "Stock Out Failed");
     } finally {
       setLoading(false);
     }

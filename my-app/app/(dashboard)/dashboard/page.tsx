@@ -8,10 +8,11 @@ import {
 } from "recharts";
 import {
   TrendingUp, Package, Users, BadgeIndianRupee,
-  ChevronDown, Loader2,
+  ChevronDown, Loader2, Wallet,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
+import { useStore } from "@/components/StoreContext";
 
 
 // ─── Enhanced Color Palette ────────────────────────────────────────────────
@@ -76,8 +77,8 @@ function MiniSparkline({
   gradientId: string;
 }) {
   return (
-    <div className="mt-4 h-16 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="mt-4 w-full" style={{ height: 64 }}>
+      <ResponsiveContainer width="100%" height={64}>
         <AreaChart data={data} margin={{ top: 6, right: 0, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
@@ -204,6 +205,7 @@ function ChartCard({
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { theme } = useTheme();
+  const { activeStoreId } = useStore();
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [salesView, setSalesView] = useState<"daily" | "monthly">("daily");
@@ -323,7 +325,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData();
-  }, []);
+  }, [activeStoreId]);
 
   const isEnterprise = theme === "enterprise";
 
@@ -356,17 +358,17 @@ export default function DashboardPage() {
         gradientId: "miniProfitEnterprise",
       },
       {
-        label: "Visitors Online",
-        value: "95,574",
-        sub: "Increased by 5%",
-        icon: Users,
+        label: "Total Profit",
+        value: `₹${(summary.total_profit ?? summary.today_profit ?? 0).toLocaleString("en-IN")}`,
+        sub: summary.avg_margin ? `Avg Margin: ${summary.avg_margin}%` : "All-time profit",
+        icon: Wallet,
         iconColor: "text-primary",
         iconBg: "bg-primary-light",
         cardStyle: { background: "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(236,255,250,0.95))" },
-        chartData: miniChartData.visitors,
+        chartData: miniChartData.profit,
         chartColor: C.mint,
         chartColor2: C.mint2,
-        gradientId: "miniVisitorsEnterprise",
+        gradientId: "miniTotalProfitEnterprise",
       },
       {
         label: "Total Stock",
@@ -416,20 +418,20 @@ export default function DashboardPage() {
         gradientId: "miniProfitDefault",
       },
       {
-        label: "Visitors Online",
-        value: "95,574",
-        sub: "Increased by 5%",
-        icon: Users,
+        label: "Total Profit",
+        value: `₹${(summary.total_profit ?? summary.today_profit ?? 0).toLocaleString("en-IN")}`,
+        sub: summary.avg_margin ? `Avg Margin: ${summary.avg_margin}%` : "All-time profit",
+        icon: Wallet,
         iconColor: "text-white",
         iconBg: "bg-white/20",
         cardStyle: {
           background: "linear-gradient(135deg, #14D9B5 0%, #63F5D2 100%)",
           boxShadow: `0 18px 40px ${C.mintGlow}`,
         },
-        chartData: miniChartData.visitors,
+        chartData: miniChartData.profit,
         chartColor: "#FFFFFF",
         chartColor2: "rgba(255,255,255,0.25)",
-        gradientId: "miniVisitorsDefault",
+        gradientId: "miniTotalProfitDefault",
       },
       {
         label: "Total Stock",

@@ -5,10 +5,12 @@ import {
   Search, Eye, Trash2, X, ChevronDown, Filter,
   ShoppingCart, Clock, CheckCircle, XCircle, Truck,
   IndianRupee, CalendarDays, User, Phone, Package,
-  ArrowUpDown, RefreshCw, Receipt, Loader2, Download, ChevronLeft, ChevronRight, ShoppingBag
+  ArrowUpDown, RefreshCw, Receipt, Loader2, Download, ChevronLeft, ChevronRight, ShoppingBag, Printer
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
+import { useStore } from "@/components/StoreContext";
+import { toast } from "@/components/ToastProvider";
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -29,6 +31,7 @@ type OrderItem = {
   rate:        number;
   gstPercent:  number;
   discount:    number;
+  discountPercent?: number;
 };
 
 type Order = {
@@ -39,6 +42,7 @@ type Order = {
   items:         OrderItem[];
   subtotal:      number;
   totalDiscount: number;
+  discountPercent?: number;
   totalGST:      number;
   grandTotal:    number;
   paymentMethod: PaymentMethod;
@@ -57,16 +61,16 @@ type Order = {
 // ═══════════════════════════════════════════════════════════
 
 const ORDER_STATUSES: { key: OrderStatus; label: string; color: string; bg: string; icon: React.ElementType }[] = [
-  { key:"pending",   label:"Pending",   color:"text-warning",  bg:"bg-warning/10",  icon:Clock        },
-  { key:"confirmed", label:"Confirmed", color:"text-red-700",   bg:"bg-coral-light",   icon:RefreshCw    },
-  { key:"delivered", label:"Delivered", color:"text-success",  bg:"bg-mint-light",  icon:CheckCircle  },
-  { key:"cancelled", label:"Cancelled", color:"text-primary",    bg:"bg-coral-light",    icon:XCircle      },
+  { key: "pending",   label: "Pending",   color: "text-red-600",     bg: "bg-red-50 border border-red-200/80",       icon: Clock       },
+  { key: "confirmed", label: "Confirmed", color: "text-blue-600",    bg: "bg-blue-50 border border-blue-200/80",     icon: RefreshCw   },
+  { key: "delivered", label: "Delivered", color: "text-emerald-700", bg: "bg-emerald-50 border border-emerald-200/80", icon: CheckCircle },
+  { key: "cancelled", label: "Cancelled", color: "text-slate-600",   bg: "bg-slate-100 border border-slate-200",     icon: XCircle     },
 ];
 
 const PAYMENT_STATUSES: { key: PaymentStatus; label: string; color: string; bg: string }[] = [
-  { key:"paid",    label:"Paid",    color:"text-success", bg:"bg-mint-light" },
-  { key:"unpaid",  label:"Unpaid",  color:"text-primary",   bg:"bg-coral-light"   },
-  { key:"partial", label:"Partial", color:"text-warning", bg:"bg-warning/10" },
+  { key: "paid",    label: "Paid",    color: "text-emerald-700", bg: "bg-emerald-50 border border-emerald-200/80" },
+  { key: "unpaid",  label: "Unpaid",  color: "text-red-600",     bg: "bg-red-50 border border-red-200/80"       },
+  { key: "partial", label: "Partial", color: "text-blue-600",    bg: "bg-blue-50 border border-blue-200/80"     },
 ];
 
 const inputCls =
@@ -77,11 +81,143 @@ function fmt(n: number) {
 }
 
 function getOrderStatus(key: OrderStatus) {
-  return ORDER_STATUSES.find((s) => s.key === key)!;
+  return ORDER_STATUSES.find((s) => s.key === key) || ORDER_STATUSES[0];
 }
 
 function getPayStatus(key: PaymentStatus) {
-  return PAYMENT_STATUSES.find((s) => s.key === key)!;
+  return PAYMENT_STATUSES.find((s) => s.key === key) || PAYMENT_STATUSES[0];
+}
+
+// ═══════════════════════════════════════════════════════════
+// INVOICE PRINT HELPER
+// ═══════════════════════════════════════════════════════════
+
+function printOrderInvoice(order: Order, storeName?: string) {
+  const rows = order.items
+    .map((item) => {
+      const base = item.rate * item.qty;
+      const disc = item.discount * item.qty;
+      const discPercent =
+        item.discountPercent != null && item.discountPercent > 0
+          ? item.discountPercent
+          : item.rate > 0 && disc > 0
+          ? Math.round((disc / (item.rate * item.qty)) * 100)
+          : 0;
+      const taxable = base - disc;
+      const gst = Math.round((taxable * item.gstPercent) / 100);
+      const total = taxable + gst;
+
+      return `
+      <tr>
+        <td>
+          <div style="font-weight:600;color:#0f172a">${item.name}</div>
+          ${item.variant || item.brand ? `<div style="font-size:10px;color:#64748b">${[item.brand, item.variant].filter(Boolean).join(" · ")}</div>` : ""}
+        </td>
+        <td style="text-align:center">${item.qty}</td>
+        <td style="text-align:right">₹${item.rate.toLocaleString("en-IN")}</td>
+        <td style="text-align:center">${item.gstPercent}%</td>
+        <td style="text-align:right">${
+          disc > 0
+            ? `₹${disc.toLocaleString("en-IN")}${discPercent > 0 ? ` <span style="font-size:11px;color:#16a34a;font-weight:600">(${discPercent}%)</span>` : ""}`
+            : "—"
+        }</td>
+        <td style="text-align:right;font-weight:600">₹${total.toLocaleString("en-IN")}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const taxableAmount = Math.max(0, order.subtotal - order.totalDiscount);
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Invoice ${order.invoiceNo}</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { padding: 32px; font-size: 13px; color: #1e293b; background: #fff; }
+        .header { display: flex; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e2e8f0; }
+        .shop { font-size: 22px; font-weight: 800; color: #dc2626; }
+        .inv { text-align: right; }
+        .inv p { font-size: 12px; color: #64748b; margin-top: 2px; }
+        .inv strong { font-size: 16px; color: #0f172a; font-family: monospace; }
+        .customer { display: flex; gap: 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; }
+        .customer p { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; margin-bottom: 2px; }
+        .customer strong { font-size: 13px; color: #0f172a; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th { background: #f1f5f9; padding: 10px 12px; text-align: left; font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+        .totals { margin-left: auto; width: 300px; border-top: 1px solid #e2e8f0; margin-top: 8px; }
+        .totals tr td { padding: 6px 0; font-size: 13px; }
+        .totals tr td:last-child { text-align: right; font-weight: 600; }
+        .grand td { font-size: 16px; font-weight: 800; color: #dc2626; border-top: 2px solid #0f172a; padding-top: 10px; }
+        .footer { text-align: center; margin-top: 36px; padding-top: 16px; border-top: 1px dashed #cbd5e1; font-size: 12px; color: #94a3b8; }
+        @media print { body { padding: 16px; } }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <div class="shop">🏪 ${storeName || "Stock Management"}</div>
+          <p style="font-size:12px;color:#64748b;margin-top:4px">Tax Invoice / Bill of Supply</p>
+          ${order.billedBy ? `<p style="font-size:11px;color:#64748b;margin-top:2px">Billed By: <strong>${order.billedBy}</strong></p>` : ""}
+        </div>
+        <div class="inv">
+          <strong>${order.invoiceNo}</strong>
+          <p>Order ID: #${order.id}</p>
+          <p>Date: ${order.createdAt || new Date().toLocaleDateString("en-IN")}</p>
+          <p>Payment: ${order.paymentMethod.toUpperCase()} (${order.paymentStatus.toUpperCase()})</p>
+        </div>
+      </div>
+
+      <div class="customer">
+        <div><p>Customer Name</p><strong>${order.customer || "Walk-in Customer"}</strong></div>
+        <div><p>Contact Phone</p><strong>${order.phone || "—"}</strong></div>
+        <div><p>Order Status</p><strong style="text-transform:capitalize">${order.status}</strong></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th style="text-align:center">Qty</th>
+            <th style="text-align:right">Rate</th>
+            <th style="text-align:center">GST</th>
+            <th style="text-align:right">Discount</th>
+            <th style="text-align:right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <table class="totals">
+        <tr><td>Subtotal</td><td>₹${order.subtotal.toLocaleString("en-IN")}</td></tr>
+        ${
+          order.totalDiscount > 0
+            ? `<tr><td style="color:#16a34a">Discount${order.discountPercent ? ` (${order.discountPercent}%)` : ""}</td><td style="color:#16a34a">−₹${order.totalDiscount.toLocaleString("en-IN")}</td></tr>`
+            : ""
+        }
+        <tr><td>Taxable Amount</td><td>₹${taxableAmount.toLocaleString("en-IN")}</td></tr>
+        <tr><td>GST</td><td>₹${order.totalGST.toLocaleString("en-IN")}</td></tr>
+        <tr class="grand"><td>Grand Total</td><td>₹${order.grandTotal.toLocaleString("en-IN")}</td></tr>
+      </table>
+
+      <div class="footer">
+        <p>Thank you for shopping with us! 🙏</p>
+        <p style="margin-top:4px;font-size:11px;">This is a computer generated invoice.</p>
+      </div>
+    </body>
+    </html>`;
+
+  const w = window.open("", "_blank", "width=750,height=900");
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => {
+    w.print();
+  }, 500);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -107,7 +243,7 @@ function OrderDetailModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="text-base font-bold text-text-primary">{order.invoiceNo}</h2>
+              <h2 className="text-base font-bold text-text-primary font-mono">{order.invoiceNo}</h2>
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${orderSt.bg} ${orderSt.color}`}>
                 <orderSt.icon size={11} />
                 {orderSt.label}
@@ -116,14 +252,24 @@ function OrderDetailModal({
                 {paySt.label}
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-0.5 font-mono">{order.id} · {order.createdAt}</p>
+            <p className="text-xs text-text-secondary mt-0.5 font-mono">Order #{order.id} · {order.createdAt}</p>
           </div>
-          <button onClick={onClose}
-            className="w-10 h-10 rounded-xl hover:bg-primary-light text-text-secondary hover:text-primary flex items-center justify-center transition-all bg-background"
-            title="Close"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => printOrderInvoice(order)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition-colors"
+              title="Print Invoice"
+            >
+              <Printer size={15} />
+              Print Invoice
+            </button>
+            <button onClick={onClose}
+              className="w-10 h-10 rounded-xl hover:bg-primary-light text-text-secondary hover:text-primary flex items-center justify-center transition-all bg-background"
+              title="Close"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
@@ -190,7 +336,9 @@ function OrderDetailModal({
                         <td className="px-4 py-3 text-text-primary font-semibold tabular-nums text-base">{item.qty}</td>
                         <td className="px-4 py-3 text-text-primary tabular-nums">{fmt(item.rate)}</td>
                         <td className="px-4 py-3 text-warning tabular-nums text-xs font-bold">{item.gstPercent}%</td>
-                        <td className="px-4 py-3 text-success tabular-nums font-medium">{disc > 0 ? fmt(disc) : "—"}</td>
+                        <td className="px-4 py-3 text-success tabular-nums font-medium">
+                          {disc > 0 ? `${fmt(disc)}${item.discountPercent && item.discountPercent > 0 ? ` (${item.discountPercent}%)` : ""}` : "—"}
+                        </td>
                         <td className="px-4 py-3 font-bold text-text-primary tabular-nums text-base">{fmt(total)}</td>
                       </tr>
                     );
@@ -204,7 +352,11 @@ function OrderDetailModal({
           <div className="ml-auto w-64 space-y-2">
             {[
               { label:"Subtotal",        value: fmt(order.subtotal),       cls:"text-text-primary" },
-              ...(order.totalDiscount > 0 ? [{ label:"Discount", value:`−${fmt(order.totalDiscount)}`, cls:"text-success" }] : []),
+              ...(order.totalDiscount > 0 ? [{
+                label: order.discountPercent && order.discountPercent > 0 ? `Discount (${order.discountPercent}%)` : "Discount",
+                value: `−${fmt(order.totalDiscount)}`,
+                cls: "text-success"
+              }] : []),
               { label:"GST",             value: fmt(order.totalGST),       cls:"text-warning" },
             ].map((r) => (
               <div key={r.label} className="flex items-center justify-between">
@@ -229,9 +381,16 @@ function OrderDetailModal({
 
         </div>
 
-        <div className="px-6 py-4 border-t border-border shrink-0">
+        <div className="px-6 py-4 border-t border-border shrink-0 flex items-center justify-between">
+          <button
+            onClick={() => printOrderInvoice(order)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary-hover transition-colors shadow-sm"
+          >
+            <Printer size={15} />
+            Print / Download Invoice
+          </button>
           <button onClick={onClose}
-            className="w-full h-10 rounded-lg border border-border text-sm font-medium text-text-primary hover:bg-background transition-colors">
+            className="px-5 py-2 rounded-xl border border-border text-xs font-medium text-text-primary hover:bg-background transition-colors">
             Close
           </button>
         </div>
@@ -246,6 +405,7 @@ function OrderDetailModal({
 
 export default function OrdersPage() {
   const { theme } = useTheme();
+  const { activeStoreId } = useStore();
   const isEnterprise = theme === "enterprise";
 
   const [orders,     setOrders]     = useState<Order[]>([]);
@@ -257,34 +417,44 @@ export default function OrdersPage() {
         setLoading(true);
         const res = await api.get('/bills');
         console.log("FETCHED BILLS DATA:", res.data);
-        setOrders(res.data.map((b: any) => ({
+        const rawList = Array.isArray(res.data) ? res.data : (res.data?.rows || []);
+        setOrders(rawList.map((b: any) => ({
           id: b.id,
-          invoiceNo: b.invoice_no,
-          customer: b.customer?.name || "Walk-in",
-          phone: b.customer?.phone || "—",
-          items: b.items?.map((i: any) => ({
-            productId: i.product_id,
-            name: i.product?.name || "Unknown",
-            category: i.product?.category,
-            brand: i.product?.brand,
-            sku: i.product?.sku,
-            variant: i.size || i.product?.color || i.product?.hsn_code,
-            qty: i.quantity,
-            rate: parseFloat(i.unit_price),
-            gstPercent: parseFloat(i.gst_percent || 0),
-            discount: parseFloat(i.discount || 0)
-          })) || [],
-          subtotal: parseFloat(b.subtotal),
-          totalDiscount: parseFloat(b.total_discount || 0),
-          totalGST: parseFloat(b.total_gst || 0),
-          grandTotal: parseFloat(b.total_amount),
+          invoiceNo: b.invoice_number || b.invoice_no || `INV-${String(b.id).padStart(5, '0')}`,
+          customer: b.customer?.name || b.customer_name || "Walk-in",
+          phone: b.customer?.phone || b.customer_phone || "—",
+          items: b.items?.map((i: any) => {
+            const rate = parseFloat(i.unit_price || i.price || 0);
+            const disc = parseFloat(i.discount || 0);
+            const discPercent = i.discount_percent != null
+              ? parseFloat(i.discount_percent)
+              : (rate > 0 && disc > 0 ? Math.round((disc / rate) * 100) : 0);
+            return {
+              productId: i.product_id,
+              name: i.product?.name || i.product_name || "Unknown",
+              category: i.product?.category,
+              brand: i.product?.brand,
+              sku: i.product?.sku,
+              variant: i.size || i.product?.color || i.product?.hsn_code,
+              qty: i.quantity,
+              rate,
+              gstPercent: parseFloat(i.gst_percent || 0),
+              discount: disc,
+              discountPercent: discPercent,
+            };
+          }) || [],
+          subtotal: parseFloat(b.subtotal || b.total_amount || 0),
+          totalDiscount: parseFloat(b.total_discount || b.discount || 0),
+          discountPercent: parseFloat(b.discount_percent || 0),
+          totalGST: parseFloat(b.total_gst || b.gst_amount || 0),
+          grandTotal: parseFloat(b.grand_total || b.final_amount || b.total_amount || 0),
           paymentMethod: (b.payment_method || "cash").toLowerCase() as PaymentMethod,
-          paymentStatus: (b.payment_status || "paid").toLowerCase() as PaymentStatus,
-          status: (b.status || "pending").toLowerCase() as OrderStatus,
-          createdAt: b.createdAt?.replace('T',' ').slice(0, 16),
-          updatedAt: b.updatedAt?.replace('T',' ').slice(0, 16),
+          paymentStatus: (b.paid_status || b.payment_status || "paid").toLowerCase() as PaymentStatus,
+          status: (b.status || (b.paid_status === "PAID" ? "delivered" : "pending") || "pending").toLowerCase() as OrderStatus,
+          createdAt: (b.created_at || b.createdAt || "").replace('T',' ').slice(0, 16),
+          updatedAt: (b.updated_at || b.updatedAt || "").replace('T',' ').slice(0, 16),
           note: b.note || "",
-          billedBy: b.billed_by || b.created_by || b.staff?.name || b.user?.name || b.billedBy || b.createdBy || ""
+          billedBy: b.biller?.name || b.staff?.name || b.user?.name || (typeof b.billed_by === 'string' ? b.billed_by : "") || ""
         })));
       } catch (error) {
         console.error("Failed to fetch orders", error);
@@ -293,7 +463,7 @@ export default function OrdersPage() {
       }
     }
     fetchOrders();
-  }, []);
+  }, [activeStoreId]);
   const [search,     setSearch]     = useState("");
   const [statusF,    setStatusF]    = useState("All");
   const [payF,       setPayF]       = useState("All");
@@ -389,8 +559,10 @@ export default function OrdersPage() {
       await api.delete(`/bills/${id}`);
       setOrders((prev) => prev.filter((o) => o.id !== id));
       setDeleteId(null);
+      window.dispatchEvent(new Event("sidebar-counts-update"));
+      toast.success("Order deleted successfully", "Order Deleted");
     } catch (error: any) {
-      alert(error.message || "Failed to delete order");
+      toast.error(error.message || "Failed to delete order", "Delete Failed");
     } finally {
       setLoading(false);
     }
@@ -605,7 +777,7 @@ export default function OrdersPage() {
                       {/* Order ID */}
                       <td className={`px-5 ${densityClass}`}>
                         <p className="font-semibold text-text-primary text-xs font-mono">{order.invoiceNo}</p>
-                        <p className="text-xs text-text-secondary mt-0.5">{order.id}</p>
+                        <p className="text-xs text-text-secondary mt-0.5">Order #{order.id}</p>
                         {order.billedBy && (
                           <p className="text-[10px] text-text-secondary mt-1">
                             By: <span className="font-semibold text-text-primary">{order.billedBy}</span>
@@ -662,6 +834,13 @@ export default function OrdersPage() {
                       {/* Actions */}
                       <td className={`px-5 ${densityClass}`}>
                         <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => printOrderInvoice(order)}
+                            className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center transition-colors"
+                            title="Print / View invoice"
+                          >
+                            <Printer size={14} />
+                          </button>
                           <button
                             onClick={() => setViewing(order)}
                             className="w-8 h-8 rounded-lg bg-coral-light hover:bg-red-100 text-red-700 flex items-center justify-center transition-colors"

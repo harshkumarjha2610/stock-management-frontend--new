@@ -31,6 +31,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { toast } from "@/components/ToastProvider";
 
 type Product = {
   id: string;
@@ -161,6 +162,9 @@ function printInvoice(
   invoiceNo: string,
   totals: {
     subtotal: number;
+    itemDiscount?: number;
+    billDisc?: number;
+    billDiscountPercent?: number;
     totalDiscount: number;
     taxableAmount: number;
     totalGST: number;
@@ -178,12 +182,19 @@ function printInvoice(
     merchantId?: string;
     status: string;
     notes?: string;
-  }
+  },
+  storeName?: string
 ) {
   const rows = cart
     .map((item) => {
       const base = item.sellingPrice * item.qty;
       const disc = item.discount * item.qty;
+      const discPercent =
+        item.discountPercent != null && item.discountPercent > 0
+          ? item.discountPercent
+          : item.sellingPrice > 0 && item.discount > 0
+          ? Math.round((item.discount / item.sellingPrice) * 100)
+          : 0;
       const taxable = base - disc;
       const gst = Math.round((taxable * item.gstPercent) / 100);
       const total = taxable + gst;
@@ -197,7 +208,7 @@ function printInvoice(
       )}</td>
         <td style="text-align:center">${item.gstPercent}%</td>
         <td style="text-align:right">${item.discount > 0
-          ? "₹" + (item.discount * item.qty).toLocaleString("en-IN")
+          ? `₹${disc.toLocaleString("en-IN")}${discPercent > 0 ? ` <span style="font-size:11px;color:#16a34a;font-weight:600">(${discPercent}%)</span>` : ""}`
           : "—"
         }</td>
         <td style="text-align:right">₹${total.toLocaleString("en-IN")}</td>
@@ -272,7 +283,7 @@ function printInvoice(
     <body>
       <div class="header">
         <div>
-          <div class="shop">🏪 ShopAdmin</div>
+          <div class="shop">🏪 ${storeName || "ShopAdmin"}</div>
           <p style="font-size:12px;color:#64748b;margin-top:4px">GST No: 27AABCS1429B1Z1</p>
           <p style="font-size:12px;color:#64748b">Phone: +91 98765 43210</p>
         </div>
@@ -309,12 +320,18 @@ function printInvoice(
 
       <table class="totals">
         <tr><td>Subtotal</td><td>₹${totals.subtotal.toLocaleString("en-IN")}</td></tr>
-        ${totals.totalDiscount > 0
-      ? `<tr><td style="color:#16a34a">Discount</td><td style="color:#16a34a">−₹${totals.totalDiscount.toLocaleString(
-        "en-IN"
-      )}</td></tr>`
-      : ""
-    }
+        ${totals.itemDiscount && totals.itemDiscount > 0
+          ? `<tr><td style="color:#16a34a">Item Discount</td><td style="color:#16a34a">−₹${totals.itemDiscount.toLocaleString("en-IN")}</td></tr>`
+          : ""
+        }
+        ${totals.billDisc && totals.billDisc > 0
+          ? `<tr><td style="color:#16a34a">Bill Discount (${totals.billDiscountPercent || 0}%)</td><td style="color:#16a34a">−₹${totals.billDisc.toLocaleString("en-IN")}</td></tr>`
+          : (totals.totalDiscount > 0 && (!totals.itemDiscount || totals.itemDiscount === 0)
+              ? `<tr><td style="color:#16a34a">Discount${totals.billDiscountPercent ? ` (${totals.billDiscountPercent}%)` : ""}</td><td style="color:#16a34a">−₹${totals.totalDiscount.toLocaleString("en-IN")}</td></tr>`
+              : (totals.totalDiscount > 0 && !totals.billDisc
+                  ? `<tr><td style="color:#16a34a">Total Discount</td><td style="color:#16a34a">−₹${totals.totalDiscount.toLocaleString("en-IN")}</td></tr>`
+                  : ""))
+        }
         <tr><td>Taxable Amount</td><td>₹${totals.taxableAmount.toLocaleString("en-IN")}</td></tr>
         <tr><td>GST</td><td>₹${totals.totalGST.toLocaleString("en-IN")}</td></tr>
         ${payment === "cash"
@@ -699,6 +716,8 @@ export default function BillingPage() {
         body: JSON.stringify(payload),
       });
 
+      window.dispatchEvent(new Event("sidebar-counts-update"));
+
       const invNo = res.invoice_no || res.invoice_number || "";
       setLastInvoice(invNo);
 
@@ -725,19 +744,27 @@ export default function BillingPage() {
         invNo,
         {
           subtotal: totals.subtotal,
+          itemDiscount: totals.itemDiscount,
+          billDisc: totals.billDisc,
+          billDiscountPercent: billDiscount,
           totalDiscount: totals.totalDiscount,
           taxableAmount: totals.taxableAmount,
           totalGST: totals.totalGST,
           grandTotal: totals.grandTotal,
           cashReceived,
         },
-        cardDetails
+        cardDetails,
+        storePayment?.name
       );
 
       setSuccess(true);
       setShowUpiPopup(false);
+      toast.success(
+        mode === "sale" ? "Bill created successfully!" : "Return processed successfully!",
+        mode === "sale" ? "Bill Generated" : "Return Completed"
+      );
     } catch (error: any) {
-      alert(error?.message || "Failed to create bill");
+      toast.error(error?.message || "Failed to create bill", "Billing Error");
     } finally {
       setSubmitting(false);
     }
@@ -748,7 +775,7 @@ export default function BillingPage() {
 
     if (payMethod === "upi" && mode === "sale") {
       if (!storePayment?.upiId) {
-        alert("Add the store UPI ID before accepting UPI payments.");
+        toast.warning("Add the store UPI ID before accepting UPI payments.", "Missing UPI ID");
         return;
       }
 
@@ -831,14 +858,25 @@ export default function BillingPage() {
 
           <button
             onClick={() =>
-              printInvoice(cart, { name: custName, phone: custPhone }, payMethod, lastInvoice, {
-                subtotal: totals.subtotal,
-                totalDiscount: totals.totalDiscount,
-                taxableAmount: totals.taxableAmount,
-                totalGST: totals.totalGST,
-                grandTotal: totals.grandTotal,
-                cashReceived,
-              })
+              printInvoice(
+                cart,
+                { name: custName, phone: custPhone },
+                payMethod,
+                lastInvoice,
+                {
+                  subtotal: totals.subtotal,
+                  itemDiscount: totals.itemDiscount,
+                  billDisc: totals.billDisc,
+                  billDiscountPercent: billDiscount,
+                  totalDiscount: totals.totalDiscount,
+                  taxableAmount: totals.taxableAmount,
+                  totalGST: totals.totalGST,
+                  grandTotal: totals.grandTotal,
+                  cashReceived,
+                },
+                undefined,
+                storePayment?.name
+              )
             }
             className="flex h-10 items-center gap-2 rounded-md border border-border bg-surface px-6 text-sm font-semibold text-text-primary transition-colors hover:bg-background"
           >
