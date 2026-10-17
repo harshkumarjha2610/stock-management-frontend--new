@@ -22,6 +22,7 @@ type PayMethod = "Bank Transfer" | "Cash" | "UPI";
 
 type Staff = {
   id: string;
+  staffCode?: string;
   name: string;
   phone: string;
   address: string;
@@ -133,8 +134,16 @@ function calcHours(checkIn: string, checkOut: string): number {
 }
 
 function genStaffId(list: Staff[]) {
-  const max = list.length ? Math.max(...list.map((s) => parseInt(s.id.split("-")[1]))) : 0;
-  return `STF-${String(max + 1).padStart(3, "0")}`;
+  const max = list.length
+    ? Math.max(
+        ...list.map((s) => {
+          const code = s.staffCode || "";
+          const num = parseInt(code.replace("KH-", ""), 10);
+          return isNaN(num) ? parseInt(String(s.id), 10) || 0 : num;
+        })
+      )
+    : 0;
+  return `KH-${String(max + 1).padStart(3, "0")}`;
 }
 
 function fmtMonth(m: string) {
@@ -259,6 +268,7 @@ export default function StaffManagementPage() {
 
         setStaffList(staffRes.data.map((s: any) => ({
           id: s.id,
+          staffCode: s.staff_code || (s.id ? `KH-${String(s.id).padStart(3, '0')}` : ""),
           name: s.name,
           phone: s.phone,
           address: s.address,
@@ -324,10 +334,22 @@ export default function StaffManagementPage() {
   // ── STAFF LOGIC ──────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════════
 
+  const staffMap = useMemo(() => {
+    const map: Record<string, Staff> = {};
+    staffList.forEach((s) => {
+      map[String(s.id)] = s;
+    });
+    return map;
+  }, [staffList]);
+
   const filteredStaff = useMemo(() => {
     const q = staffSearch.toLowerCase();
     return staffList.filter((s) => {
-      const match = String(s.name).toLowerCase().includes(q) || String(s.phone).includes(q) || String(s.id).toLowerCase().includes(q);
+      const match =
+        String(s.name).toLowerCase().includes(q) ||
+        String(s.phone).includes(q) ||
+        String(s.id).toLowerCase().includes(q) ||
+        (s.staffCode && s.staffCode.toLowerCase().includes(q));
       const st = staffStatus === "All" || s.status === staffStatus;
       return match && st;
     });
@@ -393,6 +415,7 @@ export default function StaffManagementPage() {
         const newStaff: Staff = {
           ...staffForm,
           id: res.data.id,
+          staffCode: res.data.staff_code || genStaffId(staffList),
           joiningDate: res.data.joining_date?.split('T')[0]
         };
         setStaffList((p) => [newStaff, ...p]);
@@ -543,11 +566,15 @@ export default function StaffManagementPage() {
     const q = salarySearch.toLowerCase();
     return salaryList.filter((s) => {
       const matchMonth = !salaryMonth || s.month === salaryMonth;
-      const matchSearch = String(s.staffName).toLowerCase().includes(q) || String(s.staffId).toLowerCase().includes(q);
+      const code = staffMap[String(s.staffId)]?.staffCode || "";
+      const matchSearch =
+        String(s.staffName).toLowerCase().includes(q) ||
+        String(s.staffId).toLowerCase().includes(q) ||
+        code.toLowerCase().includes(q);
       const matchStatus = salaryStatusFilter === "All" || s.status === salaryStatusFilter;
       return matchMonth && matchSearch && matchStatus;
     });
-  }, [salaryList, salaryMonth, salarySearch, salaryStatusFilter]);
+  }, [salaryList, salaryMonth, salarySearch, salaryStatusFilter, staffMap]);
 
   const totalPayable = filteredSalary.reduce((t, s) => t + s.amount, 0);
   const totalPaid = filteredSalary.filter((s) => s.status === "Paid").reduce((t, s) => t + s.amount, 0);
@@ -743,7 +770,7 @@ export default function StaffManagementPage() {
                     <tr><td colSpan={9} className="py-16 text-center text-sm text-text-secondary">No staff found</td></tr>
                   ) : filteredStaff.map((s) => (
                     <tr key={s.id} className="border-b border-slate-50 hover:bg-background transition-colors">
-                      <td className="px-4 py-3.5 font-mono text-xs text-text-secondary">{s.id}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs font-semibold text-text-secondary">{s.staffCode || (s.id ? `KH-${String(s.id).padStart(3, '0')}` : "—")}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold shrink-0">
@@ -891,7 +918,7 @@ export default function StaffManagementPage() {
               <select value={attStaffFilter} onChange={(e) => setAttStaffFilter(e.target.value)}
                 className="h-9 pl-3 pr-8 rounded-lg border border-border bg-surface text-sm text-text-primary outline-none focus:border-red-400 appearance-none cursor-pointer">
                 <option value="All">All Staff</option>
-                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.staffCode || `KH-${String(s.id).padStart(3, '0')}`})</option>)}
               </select>
               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary pointer-events-none" />
             </div>
@@ -927,7 +954,7 @@ export default function StaffManagementPage() {
                       <tr><td colSpan={8} className="py-12 text-center text-sm text-text-secondary">No records for this date</td></tr>
                     ) : dailyRecords.map((a) => (
                       <tr key={a.id} className="border-b border-slate-50 hover:bg-background transition-colors">
-                        <td className="px-4 py-3.5 font-mono text-xs text-text-secondary">{a.staffId}</td>
+                        <td className="px-4 py-3.5 font-mono text-xs font-semibold text-text-secondary">{staffMap[String(a.staffId)]?.staffCode || `KH-${String(a.staffId).padStart(3, '0')}`}</td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold shrink-0">
@@ -1022,7 +1049,7 @@ export default function StaffManagementPage() {
                       const pct = total > 0 ? Math.round((r.present / total) * 100) : 0;
                       return (
                         <tr key={r.staffId} className="border-b border-slate-50 hover:bg-background transition-colors">
-                          <td className="px-5 py-3.5 font-mono text-xs text-text-secondary">{r.staffId}</td>
+                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-text-secondary">{staffMap[String(r.staffId)]?.staffCode || `KH-${String(r.staffId).padStart(3, '0')}`}</td>
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">
                               <div className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold shrink-0">
@@ -1121,7 +1148,7 @@ export default function StaffManagementPage() {
                     <tr><td colSpan={8} className="py-14 text-center text-sm text-text-secondary">No salary records found</td></tr>
                   ) : filteredSalary.map((r) => (
                     <tr key={r.id} className="border-b border-slate-50 hover:bg-background transition-colors">
-                      <td className="px-4 py-3.5 font-mono text-xs text-text-secondary">{r.staffId}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs font-semibold text-text-secondary">{staffMap[String(r.staffId)]?.staffCode || `KH-${String(r.staffId).padStart(3, '0')}`}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold shrink-0">
@@ -1379,7 +1406,7 @@ export default function StaffManagementPage() {
               )}
               <div className="grid grid-cols-2 gap-4 flex-1">
                 {[
-                  { label: "Staff ID", value: viewStaff.id },
+                  { label: "Staff ID", value: viewStaff.staffCode || (viewStaff.id ? `KH-${String(viewStaff.id).padStart(3, '0')}` : "—") },
                   { label: "Phone", value: viewStaff.phone },
                   { label: "Email ID", value: viewStaff.emailId || "—" },
                   { label: "Aadhar Card", value: viewStaff.aadharCard || "—" },
@@ -1694,7 +1721,7 @@ export default function StaffManagementPage() {
                 >
                   <option value="">Select Staff</option>
                   {staffList.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+                    <option key={s.id} value={s.id}>{s.name} ({s.staffCode || `KH-${String(s.id).padStart(3, '0')}`})</option>
                   ))}
                 </select>
               </div>

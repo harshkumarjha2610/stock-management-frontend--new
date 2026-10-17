@@ -118,9 +118,9 @@ function totalStock(p: Product) {
 
 function getStockBadge(p: Product) {
   const total = totalStock(p);
-  if (total === 0) return { label: "Out of Stock", cls: "bg-coral-light text-primary border-coral" };
-  if (total <= p.minStockAlert) return { label: "Low Stock", cls: "bg-warning/10 text-warning border-warning" };
-  return { label: "In Stock", cls: "bg-mint-light text-success border-mint" };
+  if (total === 0) return { label: "Out of Stock", cls: "bg-red-50 text-red-700 border border-red-200" };
+  if (total <= p.minStockAlert) return { label: "Low Stock", cls: "bg-red-50 text-red-600 border border-red-200" };
+  return { label: "In Stock", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200" };
 }
 
 function marginPct(p: Product) {
@@ -1814,11 +1814,6 @@ export default function ProductsPage() {
                                 <span className="font-mono">{p.sku}</span>
                               </p>
                             )}
-                            {isGrocery && p.barcode && (
-                              <div className="mt-1.5" title={`System Barcode: ${p.barcode}`}>
-                                <Barcode value={p.barcode || ""} className="h-6" />
-                              </div>
-                            )}
                             {!isGrocery && p.sizes?.some((s: any) => s.barcode) && (
                               <span className="text-[10px] text-text-secondary font-semibold bg-background px-1.5 py-0.5 rounded mt-1.5 inline-block">
                                 🏷️ Barcodes per size
@@ -1861,7 +1856,7 @@ export default function ProductsPage() {
                               <div className="space-y-0.5">
                                 {p.mfgDate && <p className="text-[10px] text-text-secondary">MFG: {p.mfgDate}</p>}
                                 {p.expiryDate && (
-                                  <p className={`text-[10px] font-bold ${new Date(p.expiryDate) < new Date() ? 'text-coral' : 'text-warning'}`}>
+                                  <p className={`text-[10px] font-bold ${new Date(p.expiryDate) < new Date() ? 'text-red-600' : 'text-emerald-600'}`}>
                                     EXP: {p.expiryDate}
                                   </p>
                                 )}
@@ -1888,8 +1883,8 @@ export default function ProductsPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <p className={`font-bold ${badge.label === "Out of Stock" ? "text-coral" : badge.label === "Low Stock" ? "text-warning" : "text-text-primary"}`}>
-                              {tot} pcs
+                            <p className={`font-bold ${badge.label === "In Stock" ? "text-emerald-600" : "text-red-600"}`}>
+                              {tot} {isGrocery ? (p.unit || "pcs") : "pcs"}
                             </p>
                             <p className="text-xs text-text-secondary">Alert at {p.minStockAlert}</p>
                           </td>
@@ -1994,7 +1989,7 @@ export default function ProductsPage() {
                           </div>
                           {!isGrocery && <p className="text-xs text-text-secondary mt-0.5">{p.color}</p>}
                           {isGrocery && p.expiryDate && (
-                            <p className={`text-[10px] font-bold mt-1 ${new Date(p.expiryDate) < new Date() ? 'text-coral' : 'text-warning'}`}>
+                            <p className={`text-[10px] font-bold mt-1 ${new Date(p.expiryDate) < new Date() ? 'text-red-600' : 'text-emerald-600'}`}>
                               EXP: {p.expiryDate}
                             </p>
                           )}
@@ -2030,7 +2025,7 @@ export default function ProductsPage() {
                           </div>
                           <div className="bg-background rounded-lg p-2 text-center">
                             <p className="text-xs text-text-secondary">Stock</p>
-                            <p className={`text-sm font-bold ${badge.label === "Out of Stock" ? "text-coral" : badge.label === "Low Stock" ? "text-warning" : "text-text-primary"}`}>
+                            <p className={`text-sm font-bold ${badge.label === "In Stock" ? "text-emerald-600" : "text-red-600"}`}>
                               {tot} {isGrocery ? p.unit : "pcs"}
                             </p>
                           </div>
@@ -2045,11 +2040,6 @@ export default function ProductsPage() {
                           </span>
                         </div>
 
-                        {isGrocery && p.barcode && (
-                          <div className="py-1.5 flex justify-center bg-background/50 rounded-lg border border-border">
-                            <Barcode value={p.barcode || ""} className="h-8" />
-                          </div>
-                        )}
                         {!isGrocery && p.sizes?.some((s: any) => s.barcode) && (
                           <div className="py-1.5 flex justify-center bg-background/50 rounded-lg border border-border">
                             <span className="text-[10px] text-text-secondary font-semibold">
