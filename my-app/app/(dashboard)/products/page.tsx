@@ -46,6 +46,7 @@ type Product = {
   discountedPrice?: number | null;
   discountPercent?: number | null;
   gstPercent: number;
+  isGstIncluded?: boolean;
   minStockAlert: number;
   description?: string;
   sku?: string;
@@ -125,11 +126,20 @@ function getStockBadge(p: Product) {
 
 function marginPct(p: Product) {
   if (!p.purchasePrice) return 0;
-  return Math.round(((p.sellingPrice - p.purchasePrice) / p.purchasePrice) * 100);
+  const effectivePrice =
+    p.discountedPrice != null && p.discountedPrice < p.sellingPrice
+      ? p.discountedPrice
+      : p.sellingPrice;
+  return Math.round(((effectivePrice - p.purchasePrice) / p.purchasePrice) * 100);
 }
 
 function sellingWithGST(p: Product) {
-  return Math.round(p.sellingPrice * (1 + p.gstPercent / 100));
+  const effectivePrice =
+    p.discountedPrice != null && p.discountedPrice < p.sellingPrice
+      ? p.discountedPrice
+      : p.sellingPrice;
+  if (p.isGstIncluded) return effectivePrice;
+  return Math.round(effectivePrice * (1 + p.gstPercent / 100));
 }
 
 function getSizesForCategory(category: string, gender: string): string[] {
@@ -615,7 +625,10 @@ const EMPTY_FORM: Omit<Product, "id" | "createdDate"> = {
   brand: "",
   purchasePrice: 0,
   sellingPrice: 0,
+  discountedPrice: null,
+  discountPercent: null,
   gstPercent: 5,
+  isGstIncluded: false,
   minStockAlert: 5,
   description: "",
   sku: "",
@@ -638,6 +651,190 @@ const EMPTY_FORM: Omit<Product, "id" | "createdDate"> = {
   purchaseDate: "",
 };
 
+
+// ═══════════════════════════════════════════════════════════════
+// BARCODE LABEL PRINTER HELPER
+// ═══════════════════════════════════════════════════════════════
+
+function printBarcodeLabel(p: Product, storeName?: string) {
+  const barcodeValue = p.barcode || (p.sizes?.find((s) => s.barcode)?.barcode);
+  if (!barcodeValue) {
+    toast.warning("No barcode number available for this product.", "Barcode Missing");
+    return;
+  }
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  try {
+    JsBarcode(svg, barcodeValue, {
+      format: "CODE128",
+      width: 2,
+      height: 50,
+      displayValue: true,
+      fontSize: 12,
+      margin: 4,
+    });
+  } catch (error) {
+    toast.error("Failed to generate barcode for printing.", "Barcode Error");
+    return;
+  }
+  const barcodeSvg = svg.outerHTML;
+  const shopName = storeName || "Stock Management";
+  const sellingPrice = p.sellingPrice || 0;
+  const discountedPrice =
+    p.discountedPrice != null && p.discountedPrice < sellingPrice
+      ? p.discountedPrice
+      : null;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Barcode Label - ${barcodeValue}</title>
+      <style>
+        @page {
+          size: auto;
+          margin: 4mm;
+        }
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        body {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          background: #f8fafc;
+          padding: 16px;
+        }
+        .label-card {
+          width: 280px;
+          padding: 14px 16px;
+          border: 1.5px solid #111;
+          border-radius: 8px;
+          background: #fff;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .shop-name {
+          font-size: 13px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          color: #111;
+          margin-bottom: 3px;
+          line-height: 1.2;
+          width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .product-title {
+          font-size: 11px;
+          font-weight: 600;
+          color: #4b5563;
+          margin-bottom: 6px;
+          line-height: 1.2;
+          width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .barcode-wrap {
+          margin: 2px 0 6px 0;
+          display: flex;
+          justify-content: center;
+          width: 100%;
+        }
+        .barcode-wrap svg {
+          max-width: 100%;
+          height: 48px;
+        }
+        .price-wrap {
+          display: flex;
+          align-items: baseline;
+          justify-content: center;
+          gap: 6px;
+          margin-top: 2px;
+        }
+        .mrp {
+          font-size: 14px;
+          font-weight: 800;
+          color: #111;
+          letter-spacing: -0.2px;
+        }
+        .disc {
+          font-size: 12px;
+          font-weight: 700;
+          color: #16a34a;
+        }
+        .tax-note {
+          font-size: 8.5px;
+          font-weight: 500;
+          color: #6b7280;
+          margin-top: 3px;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+        }
+        @media print {
+          body {
+            background: transparent;
+            padding: 0;
+            min-height: auto;
+          }
+          .label-card {
+            border: 1px solid #000;
+            box-shadow: none;
+            width: 100%;
+            max-width: 60mm;
+            padding: 3mm 4mm;
+            page-break-inside: avoid;
+          }
+          .shop-name { font-size: 10pt; }
+          .product-title { font-size: 8pt; }
+          .mrp { font-size: 10pt; }
+          .disc { font-size: 8.5pt; }
+          .tax-note { font-size: 6.5pt; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="label-card">
+        <div class="shop-name">🏪 ${shopName}</div>
+        <div class="product-title">${p.name}</div>
+        <div class="barcode-wrap">
+          ${barcodeSvg}
+        </div>
+        <div class="price-wrap">
+          <span class="mrp">MRP: ₹${sellingPrice.toLocaleString("en-IN")}</span>
+          ${discountedPrice != null ? `<span class="disc">Offer: ₹${discountedPrice.toLocaleString("en-IN")}</span>` : ""}
+        </div>
+        <div class="tax-note">Incl. of all taxes</div>
+      </div>
+      <script>
+        window.onload = function() {
+          setTimeout(function() {
+            window.print();
+            window.close();
+          }, 400);
+        };
+      </script>
+    </body>
+    </html>
+  `;
+
+  const w = window.open("", "_blank", "width=480,height=440");
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+}
 
 // ═══════════════════════════════════════════════════════════════
 // PRODUCT MODAL
@@ -681,7 +878,13 @@ function ProductModal({
     () => {
       if (product) {
         const { id, createdDate, ...rest } = product;
-        return rest;
+        return {
+          ...EMPTY_FORM,
+          ...rest,
+          discountPercent: rest.discountPercent ?? null,
+          discountedPrice: rest.discountedPrice ?? null,
+          isGstIncluded: rest.isGstIncluded ?? (rest.gstPercent === 0),
+        };
       }
       return {
         ...EMPTY_FORM,
@@ -690,6 +893,78 @@ function ProductModal({
       };
     }
   );
+
+  const [discountType, setDiscountType] = useState<"percent" | "flat">(() => {
+    if (product?.discountPercent != null && product.discountPercent > 0) return "percent";
+    if (product?.discountedPrice != null && product.discountedPrice < (product.sellingPrice || 0)) return "flat";
+    return "percent";
+  });
+  const prevGstRef = useRef<number>(product?.gstPercent && product.gstPercent > 0 ? product.gstPercent : 5);
+
+  function handleDiscountChange(rawVal: string, type: "percent" | "flat") {
+    if (rawVal === "") {
+      set("discountPercent", null);
+      set("discountedPrice", null);
+      return;
+    }
+    const num = parseFloat(rawVal);
+    if (isNaN(num) || num <= 0) {
+      set("discountPercent", null);
+      set("discountedPrice", null);
+      return;
+    }
+
+    const sp = form.sellingPrice || 0;
+    if (type === "percent") {
+      const clamped = Math.min(100, Math.max(0, num));
+      set("discountPercent", clamped);
+      if (sp > 0) {
+        const discPrice = Math.max(0, Math.round(sp * (1 - clamped / 100)));
+        set("discountedPrice", discPrice);
+      }
+    } else {
+      const flat = Math.max(0, Math.min(sp > 0 ? sp : num, num));
+      const discPrice = sp > 0 ? Math.max(0, sp - flat) : 0;
+      const pct = sp > 0 ? Math.round((flat / sp) * 100) : null;
+      set("discountedPrice", discPrice);
+      set("discountPercent", pct);
+    }
+  }
+
+  function handleSellingPriceChange(newPrice: number) {
+    set("sellingPrice", newPrice);
+    if (newPrice > 0) {
+      if (discountType === "percent" && form.discountPercent != null && form.discountPercent > 0) {
+        const discPrice = Math.max(0, Math.round(newPrice * (1 - form.discountPercent / 100)));
+        set("discountedPrice", discPrice);
+      } else if (discountType === "flat" && form.discountedPrice != null && form.discountedPrice < form.sellingPrice) {
+        const oldFlat = Math.max(0, form.sellingPrice - form.discountedPrice);
+        if (oldFlat < newPrice) {
+          const discPrice = Math.max(0, newPrice - oldFlat);
+          const pct = Math.round((oldFlat / newPrice) * 100);
+          set("discountedPrice", discPrice);
+          set("discountPercent", pct);
+        } else {
+          set("discountedPrice", null);
+          set("discountPercent", null);
+        }
+      }
+    } else {
+      set("discountedPrice", null);
+    }
+  }
+
+  function handleGstIncludedToggle(checked: boolean) {
+    set("isGstIncluded", checked);
+    if (checked) {
+      if (form.gstPercent > 0) {
+        prevGstRef.current = form.gstPercent;
+      }
+      set("gstPercent", 0);
+    } else {
+      set("gstPercent", prevGstRef.current || 5);
+    }
+  }
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -725,7 +1000,10 @@ function ProductModal({
         brand: form.brand,
         purchase_price: form.purchasePrice,
         selling_price: form.sellingPrice,
-        gst_percent: form.gstPercent,
+        discount_percent: form.discountPercent,
+        discounted_price: form.discountedPrice,
+        gst_percent: form.isGstIncluded ? 0 : form.gstPercent,
+        is_gst_included: form.isGstIncluded || false,
         min_stock_level: form.minStockAlert,
         description: form.description,
         image_url: form.image,
@@ -759,6 +1037,9 @@ function ProductModal({
         id: res.data.id,
         barcode: res.data.barcode,
         barcodeImageUrl: res.data.barcode_image_url,
+        discountPercent: res.data.discount_percent != null ? parseFloat(res.data.discount_percent) : form.discountPercent,
+        discountedPrice: res.data.discounted_price != null ? parseFloat(res.data.discounted_price) : form.discountedPrice,
+        isGstIncluded: res.data.is_gst_included !== undefined ? Boolean(res.data.is_gst_included) : form.isGstIncluded,
         createdDate: (res.data.createdAt || res.data.created_at || product?.createdDate || new Date().toISOString())
       } as Product;
 
@@ -772,81 +1053,24 @@ function ProductModal({
     }
   }
 
+  const effectiveSellingPrice =
+    form.discountedPrice != null && form.discountedPrice < form.sellingPrice
+      ? form.discountedPrice
+      : form.sellingPrice;
+
   const marginVal =
     form.purchasePrice > 0
       ? Math.round(
-        ((form.sellingPrice - form.purchasePrice) / form.purchasePrice) * 100
+        ((effectiveSellingPrice - form.purchasePrice) / form.purchasePrice) * 100
       )
       : 0;
-  const withTax = Math.round(
-    form.sellingPrice * (1 + form.gstPercent / 100)
-  );
+
+  const withTax = form.isGstIncluded
+    ? effectiveSellingPrice
+    : Math.round(effectiveSellingPrice * (1 + form.gstPercent / 100));
+
+  const profitPerUnit = effectiveSellingPrice - form.purchasePrice;
   const totalQty = form.sizes?.reduce((s, x) => s + (x.qty || 0), 0) || 0;
-
-  function printBarcodeLabel(p: Product) {
-    const barcodeValue = p.barcode;
-    if (!barcodeValue) {
-      toast.warning("No barcode number available for this product.", "Barcode Missing");
-      return;
-    }
-
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    try {
-      JsBarcode(svg, barcodeValue, {
-        format: "CODE128",
-        width: 2,
-        height: 60,
-        displayValue: true,
-        fontSize: 12,
-        margin: 5,
-      });
-    } catch (error) {
-      toast.error("Failed to draw barcode for printing.", "Barcode Error");
-      return;
-    }
-    const barcodeSvg = svg.outerHTML;
-
-    const html = `
-      <html><head><title>Print Barcode - ${barcodeValue}</title>
-      <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-        body { display: flex; flex-direction: column; items: center; justify-content: center; height: 100vh; padding: 20px; text-align: center; }
-        .label-box { border: 2px dashed #ccc; padding: 15px; border-radius: 8px; width: 300px; display: flex; flex-direction: column; items: center; background: white; }
-        .store-name { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #666; margin-bottom: 4px; }
-        .product-name { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .barcode-container { margin-bottom: 8px; }
-        .price { font-size: 16px; font-weight: 800; color: #dc2626; }
-        @media print {
-          body { padding: 0; }
-          .label-box { border: none; }
-        }
-      </style>
-      </head><body>
-      <div class="label-box">
-        <div class="store-name">🏪 ${store?.name || 'Stock Management'}</div>
-        <div class="product-name">${p.name}</div>
-        <div class="barcode-container">
-          ${barcodeSvg}
-        </div>
-        <div class="price">₹${p.sellingPrice.toLocaleString("en-IN")}</div>
-      </div>
-      <script>
-        window.onload = function() {
-          setTimeout(function() {
-            window.print();
-            window.close();
-          }, 500);
-        }
-      </script>
-      </body></html>
-    `;
-
-    const w = window.open("", "_blank", "width=450,height=400");
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-  }
 
   // ── VIEW MODE ─────────────────────────────────────────────────
   if (isView && product) {
@@ -856,7 +1080,8 @@ function ProductModal({
     const sellingPrice = parseFloat(product.sellingPrice as any) || 0;
     const purchasePrice = parseFloat(product.purchasePrice as any) || 0;
     const gstPercent = parseFloat(product.gstPercent as any) || 0;
-    const margin = sellingPrice - purchasePrice;
+    const effectiveSelling = product.discountedPrice != null && product.discountedPrice < sellingPrice ? product.discountedPrice : sellingPrice;
+    const margin = effectiveSelling - purchasePrice;
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
@@ -910,7 +1135,14 @@ function ProductModal({
                   {product.discountedPrice != null && product.discountedPrice < sellingPrice ? (
                     <div className="mt-0.5">
                       <p className="text-xl font-bold text-success">₹{product.discountedPrice.toLocaleString("en-IN")}</p>
-                      <p className="text-xs line-through text-text-secondary">₹{sellingPrice.toLocaleString("en-IN")}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-xs line-through text-text-secondary">₹{sellingPrice.toLocaleString("en-IN")}</span>
+                        {product.discountPercent != null && (
+                          <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
+                            {product.discountPercent}% OFF
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-xl font-bold text-primary mt-0.5">₹{sellingPrice.toLocaleString("en-IN")}</p>
@@ -919,10 +1151,20 @@ function ProductModal({
                 <div>
                   <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide">Purchase Price</p>
                   <p className="text-xl font-bold text-text-primary mt-0.5">₹{purchasePrice.toLocaleString("en-IN")}</p>
+                  {product.isGstIncluded && (
+                    <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 mt-1 inline-block">
+                      GST Included
+                    </span>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide">GST</p>
-                  <p className="text-xl font-bold text-warning mt-0.5">{gstPercent}%</p>
+                  <p className="text-xl font-bold text-warning mt-0.5">
+                    {product.isGstIncluded ? "0%" : `${gstPercent}%`}
+                  </p>
+                  {product.isGstIncluded && (
+                    <span className="text-[10px] text-text-secondary">Included in purchase</span>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide">Margin</p>
@@ -1009,18 +1251,26 @@ function ProductModal({
                         </span>
                       </div>
                       {s.barcode && (
-                        <div className="mt-1.5 flex flex-col items-center bg-surface rounded-lg border border-border p-2 text-center gap-1">
-                          <Barcode value={s.barcode} className="h-9" />
-                          <p className="text-[9px] font-mono text-text-secondary break-all">{s.barcode}</p>
+                        <div className="mt-1.5 flex flex-col items-center bg-white rounded-lg border border-border p-2.5 text-center gap-1 shadow-2xs">
+                          <p className="text-[10px] font-extrabold text-text-primary uppercase tracking-wider truncate max-w-full">
+                            🏪 {store?.name || "Store"}
+                          </p>
+                          <div className="py-0.5">
+                            <Barcode value={s.barcode} className="h-9" />
+                            <p className="text-[9px] font-mono font-medium text-text-secondary">{s.barcode}</p>
+                          </div>
+                          <p className="text-[11px] font-extrabold text-primary">
+                            MRP: ₹{product.sellingPrice.toLocaleString("en-IN")}
+                          </p>
                           <button
                             onClick={() => printBarcodeLabel({
                               ...product,
                               name: `${product.name} (${s.size})`,
                               barcode: s.barcode,
-                            })}
-                            className="flex items-center justify-center gap-1 w-full py-1 bg-background hover:bg-primary-light text-[10px] font-bold text-text-primary hover:text-red-700 rounded border border-border transition-colors"
+                            }, store?.name)}
+                            className="flex items-center justify-center gap-1 w-full py-1 mt-1 bg-background hover:bg-primary-light text-[10px] font-bold text-text-primary hover:text-red-700 rounded border border-border transition-colors"
                           >
-                            <Printer size={9} /> Print
+                            <Printer size={10} /> Print Label
                           </button>
                         </div>
                       )}
@@ -1030,15 +1280,43 @@ function ProductModal({
               </div>
             )}
 
-            {isGrocery && product.barcode && (
+            {product.barcode && (isGrocery || !product.sizes || product.sizes.length === 0) && (
               <div className="bg-background rounded-xl border border-border p-4">
-                <p className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-3">Product Barcode</p>
-                <div className="bg-surface rounded-lg border border-border p-4 flex flex-col items-center text-center max-w-xs mx-auto gap-2">
-                  <Barcode value={product.barcode || ""} className="h-14" />
-                  <p className="text-xs font-mono text-text-secondary font-semibold">{product.barcode}</p>
+                <p className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-3">Product Barcode Label</p>
+                <div className="bg-white rounded-xl border-2 border-dashed border-border p-4 flex flex-col items-center text-center max-w-xs mx-auto gap-2 shadow-xs">
+                  <div className="border-b border-border/70 pb-2 w-full">
+                    <p className="text-xs font-extrabold text-text-primary uppercase tracking-wider">
+                      🏪 {store?.name || "Stock Management"}
+                    </p>
+                    <p className="text-xs font-semibold text-text-secondary truncate mt-0.5">
+                      {product.name}
+                    </p>
+                  </div>
+
+                  <div className="py-1">
+                    <Barcode value={product.barcode || ""} className="h-12" />
+                    <p className="text-[10px] font-mono font-semibold text-text-secondary mt-0.5">{product.barcode}</p>
+                  </div>
+
+                  <div className="border-t border-border/70 pt-2 w-full flex flex-col items-center">
+                    <div className="flex items-center gap-1.5 justify-center">
+                      <span className="text-sm font-extrabold text-text-primary">
+                        MRP: ₹{product.sellingPrice.toLocaleString("en-IN")}
+                      </span>
+                      {product.discountedPrice != null && product.discountedPrice < product.sellingPrice && (
+                        <span className="text-xs font-bold text-success">
+                          (Sale: ₹{product.discountedPrice.toLocaleString("en-IN")})
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[9px] text-text-secondary font-medium uppercase tracking-wider mt-0.5">
+                      (Incl. of all taxes)
+                    </span>
+                  </div>
+
                   <button
-                    onClick={() => printBarcodeLabel(product)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-background hover:bg-primary-light text-xs font-bold text-text-primary hover:text-red-700 rounded-lg border border-border transition-colors"
+                    onClick={() => printBarcodeLabel(product, store?.name)}
+                    className="flex items-center justify-center gap-1.5 w-full px-4 py-2 mt-1 bg-background hover:bg-primary-light text-xs font-bold text-text-primary hover:text-red-700 rounded-lg border border-border transition-colors"
                   >
                     <Printer size={13} /> Print Label
                   </button>
@@ -1268,8 +1546,8 @@ function ProductModal({
               </div>
 
               <div>
-                <p className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-4">Pricing</p>
-                <div className="grid grid-cols-3 gap-4">
+                <p className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-4">Pricing & Taxes</p>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <Field label="Purchase Price (₹) *">
                     <div className="relative">
                       <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-secondary" />
@@ -1293,28 +1571,114 @@ function ProductModal({
                         min={0}
                         placeholder="0"
                         value={form.sellingPrice || ""}
-                        onChange={(e) => set("sellingPrice", Number(e.target.value))}
+                        onChange={(e) => handleSellingPriceChange(Number(e.target.value))}
                         className={`${inputCls} pl-8 ${errors.sellingPrice ? "border-red-400 bg-coral-light" : ""}`}
                       />
                     </div>
                     {errors.sellingPrice && <p className="text-[11px] text-coral">{errors.sellingPrice}</p>}
                   </Field>
 
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+                        Discount
+                      </label>
+                      <div className="flex items-center bg-background rounded-md border border-border p-0.5 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => setDiscountType("percent")}
+                          className={`px-1.5 py-0.5 rounded font-medium transition-colors ${discountType === "percent" ? "bg-primary text-white shadow-xs" : "text-text-secondary hover:text-text-primary"}`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiscountType("flat")}
+                          className={`px-1.5 py-0.5 rounded font-medium transition-colors ${discountType === "flat" ? "bg-primary text-white shadow-xs" : "text-text-secondary hover:text-text-primary"}`}
+                        >
+                          ₹
+                        </button>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      {discountType === "percent" ? (
+                        <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-secondary" />
+                      ) : (
+                        <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-secondary" />
+                      )}
+                      <input
+                        type="number"
+                        min={0}
+                        max={discountType === "percent" ? 100 : form.sellingPrice || undefined}
+                        placeholder={discountType === "percent" ? "0%" : "₹0"}
+                        value={
+                          discountType === "percent"
+                            ? (form.discountPercent ?? "")
+                            : (form.sellingPrice > 0 && form.discountedPrice != null && form.discountedPrice < form.sellingPrice
+                              ? (form.sellingPrice - form.discountedPrice)
+                              : "")
+                        }
+                        onChange={(e) => handleDiscountChange(e.target.value, discountType)}
+                        className={`${inputCls} pl-8`}
+                      />
+                    </div>
+                    {form.discountedPrice != null && form.discountedPrice < form.sellingPrice && form.sellingPrice > 0 && (
+                      <p className="text-[11px] text-success font-medium mt-0.5 truncate">
+                        Final: ₹{form.discountedPrice.toLocaleString("en-IN")} ({form.discountPercent ? `${form.discountPercent}% off` : `Save ₹${form.sellingPrice - form.discountedPrice}`})
+                      </p>
+                    )}
+                  </div>
+
                   <Field label="GST %">
                     <div className="relative">
                       <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-secondary" />
                       <select
-                        value={form.gstPercent}
+                        value={form.isGstIncluded ? 0 : form.gstPercent}
+                        disabled={form.isGstIncluded}
                         onChange={(e) => set("gstPercent", Number(e.target.value))}
-                        className={`${inputCls} pl-8 appearance-none pr-8 cursor-pointer`}
+                        className={`${inputCls} pl-8 appearance-none pr-8 ${form.isGstIncluded ? "bg-slate-100 text-text-secondary cursor-not-allowed opacity-75 border-dashed" : "cursor-pointer"}`}
                       >
-                        {GST_OPTIONS.map((g) => (
-                          <option key={g} value={g}>{g}%</option>
-                        ))}
+                        {form.isGstIncluded ? (
+                          <option value={0}>0% (Included)</option>
+                        ) : (
+                          GST_OPTIONS.map((g) => (
+                            <option key={g} value={g}>{g}%</option>
+                          ))
+                        )}
                       </select>
                       <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary pointer-events-none" />
                     </div>
+                    {form.isGstIncluded && (
+                      <p className="text-[11px] text-amber-600 font-medium mt-0.5 flex items-center gap-1">
+                        🔒 Extra GST disabled
+                      </p>
+                    )}
                   </Field>
+                </div>
+
+                {/* GST Included in Purchase Checkbox */}
+                <div className="mt-3">
+                  <label className={`flex items-start gap-2.5 p-3 rounded-xl border transition-colors cursor-pointer select-none ${form.isGstIncluded ? "bg-emerald-50/50 border-emerald-200" : "bg-background border-border hover:bg-slate-50/80"}`}>
+                    <input
+                      type="checkbox"
+                      checked={!!form.isGstIncluded}
+                      onChange={(e) => handleGstIncludedToggle(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary shrink-0"
+                    />
+                    <div>
+                      <span className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+                        GST included in purchase
+                        {form.isGstIncluded && (
+                          <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">
+                            Active (Extra GST disabled)
+                          </span>
+                        )}
+                      </span>
+                      <p className="text-[11px] text-text-secondary mt-0.5">
+                        Tick this if purchase price already includes GST. Extra GST cannot be added to this product.
+                      </p>
+                    </div>
+                  </label>
                 </div>
 
                 {(form.purchasePrice > 0 || form.sellingPrice > 0) && (
@@ -1327,13 +1691,18 @@ function ProductModal({
                     </div>
                     <div className="bg-background rounded-lg border border-border px-3 py-2 text-center">
                       <p className="text-xs text-text-secondary">Profit/Unit</p>
-                      <p className={`text-sm font-bold ${form.sellingPrice - form.purchasePrice >= 0 ? "text-success" : "text-primary"}`}>
-                        {fmt(form.sellingPrice - form.purchasePrice)}
+                      <p className={`text-sm font-bold ${profitPerUnit >= 0 ? "text-success" : "text-primary"}`}>
+                        {fmt(profitPerUnit)}
                       </p>
                     </div>
                     <div className="bg-indigo-50 rounded-lg border border-indigo-100 px-3 py-2 text-center">
-                      <p className="text-xs text-indigo-500">With GST</p>
+                      <p className="text-xs text-indigo-500">
+                        {form.isGstIncluded ? "Final (GST Incl.)" : "With GST"}
+                      </p>
                       <p className="text-sm font-bold text-indigo-700">{fmt(withTax)}</p>
+                      {form.isGstIncluded && (
+                        <span className="text-[10px] text-indigo-500 block font-medium">No extra GST</span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1456,6 +1825,7 @@ export default function ProductsPage() {
           discountedPrice: p.discounted_price != null ? parseFloat(p.discounted_price) : null,
           discountPercent: p.discount_percent != null ? parseFloat(p.discount_percent) : null,
           gstPercent: parseFloat(p.gst_percent),
+          isGstIncluded: p.is_gst_included !== undefined ? Boolean(p.is_gst_included) : (parseFloat(p.gst_percent) === 0),
           minStockAlert: p.min_stock_level,
           description: p.description,
           sku: p.sku,
@@ -1846,7 +2216,16 @@ export default function ProductsPage() {
                             ) : (
                               <p className="font-bold text-text-primary">{fmt(p.sellingPrice)}</p>
                             )}
-                            <p className="text-xs text-text-secondary">Cost: {fmt(p.purchasePrice)}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs text-text-secondary">Cost: {fmt(p.purchasePrice)}</p>
+                              {p.isGstIncluded ? (
+                                <span className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-0.2 rounded">
+                                  GST Incl.
+                                </span>
+                              ) : (
+                                p.gstPercent > 0 && <span className="text-[9px] text-text-secondary">({p.gstPercent}% GST)</span>
+                              )}
+                            </div>
                             <p className={`text-xs font-semibold ${m >= 0 ? "text-success" : "text-coral"}`}>
                               {m >= 0 ? "+" : ""}{m}% margin
                             </p>
@@ -1901,6 +2280,15 @@ export default function ProductsPage() {
                               >
                                 <Eye size={13} /> View
                               </button>
+                              {(p.barcode || (p.sizes && p.sizes.length > 0)) && (
+                                <button
+                                  onClick={() => printBarcodeLabel(p, store?.name)}
+                                  title="Print Barcode with Shop Name & MRP"
+                                  className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                                >
+                                  <Printer size={13} /> Barcode
+                                </button>
+                              )}
                               <button
                                 onClick={() => { setSelected(p); setModal("edit"); }}
                                 className="flex items-center gap-1 text-xs font-medium text-text-secondary hover:text-text-primary"
@@ -2036,7 +2424,7 @@ export default function ProductsPage() {
                             {m >= 0 ? "+" : ""}{m}% margin
                           </span>
                           <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-xs font-semibold">
-                            {p.gstPercent}% GST
+                            {p.isGstIncluded ? "GST Incl." : `${p.gstPercent}% GST`}
                           </span>
                         </div>
 
@@ -2055,6 +2443,15 @@ export default function ProductsPage() {
                           >
                             <Eye size={13} /> View
                           </button>
+                          {(p.barcode || (p.sizes && p.sizes.length > 0)) && (
+                            <button
+                              onClick={() => printBarcodeLabel(p, store?.name)}
+                              title="Print Barcode with Shop Name & MRP"
+                              className="px-2.5 flex items-center justify-center gap-1 h-8 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 transition-colors"
+                            >
+                              <Printer size={13} />
+                            </button>
+                          )}
                           <button
                             onClick={() => { setSelected(p); setModal("edit"); }}
                             className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-background hover:bg-background text-xs font-semibold text-text-primary transition-colors"
