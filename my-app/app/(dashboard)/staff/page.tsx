@@ -251,7 +251,7 @@ export default function StaffManagementPage() {
       const parsed = JSON.parse(u);
       setUserRole(parsed.role);
       if (parsed.role === "STAFF") {
-        window.location.href = "/attendance";
+        window.location.href = "/dashboard";
       }
     }
   }, []);
@@ -259,6 +259,11 @@ export default function StaffManagementPage() {
   useEffect(() => {
     async function fetchData() {
       try {
+        const u = localStorage.getItem("user");
+        if (u) {
+          const parsed = JSON.parse(u);
+          if (parsed.role === "STAFF") return;
+        }
         setLoading(true);
         const [staffRes, attRes, salRes] = await Promise.all([
           api.get('/staff'),
@@ -679,6 +684,17 @@ export default function StaffManagementPage() {
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
+
+  if (userRole === "STAFF") {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <p className="text-base font-semibold text-text-primary">Access Denied</p>
+          <p className="text-sm text-text-secondary">Staff members do not have access to the Staff section.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

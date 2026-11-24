@@ -1227,8 +1227,8 @@ export default function Sidebar({
         const parsed = JSON.parse(u);
         setUser(parsed);
 
-        if (parsed.role === "STAFF" && window.location.pathname !== "/attendance") {
-          window.location.href = "/attendance";
+        if (parsed.role === "STAFF" && (window.location.pathname === "/staff" || window.location.pathname === "/reports")) {
+          window.location.href = "/dashboard";
         }
       }
     } catch (err) {
@@ -1418,7 +1418,10 @@ export default function Sidebar({
     return navItems
       .filter((item) => {
         if (isStaff) {
-          return ["Attendance"].includes(item.label);
+          if (["Staff", "Reports"].includes(item.label) || item.href === "/staff" || item.href === "/reports") {
+            return false;
+          }
+          return true;
         }
         if (isAdmin) {
           if (["Dashboard", "Reports", "Settings", "Attendance"].includes(item.label)) return false;

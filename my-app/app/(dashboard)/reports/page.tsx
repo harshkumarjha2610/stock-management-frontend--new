@@ -489,6 +489,7 @@ export default function ReportsPage() {
   const printRef                  = useRef<HTMLDivElement>(null);
 
   // Live Data States
+  const [isStaffUser, setIsStaffUser] = useState(false);
   const [dailySales,    setDailySales]    = useState<any[]>([]);
   const [monthlySales,  setMonthlySales]  = useState<any[]>([]);
   const [profitData,    setProfitData]    = useState<any[]>([]);
@@ -499,8 +500,27 @@ export default function ReportsPage() {
   const [stockHistory,  setStockHistory]  = useState<any[]>([]);
 
   useEffect(() => {
+    try {
+      const u = localStorage.getItem("user");
+      if (u) {
+        const parsed = JSON.parse(u);
+        if (parsed.role === "STAFF") {
+          setIsStaffUser(true);
+          window.location.href = "/dashboard";
+          return;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
     async function fetchAllData() {
       try {
+        const u = localStorage.getItem("user");
+        if (u) {
+          const parsed = JSON.parse(u);
+          if (parsed.role === "STAFF") return;
+        }
         setLoading(true);
         const [
           billsRes,
@@ -671,6 +691,17 @@ export default function ReportsPage() {
 
   const fmtMonth = (m: string) =>
     new Date(m + "-01").toLocaleString("en-IN", { month: "long", year: "numeric" });
+
+  if (isStaffUser) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <p className="text-base font-semibold text-text-primary">Access Denied</p>
+          <p className="text-sm text-text-secondary">Staff members do not have access to the Reports section.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

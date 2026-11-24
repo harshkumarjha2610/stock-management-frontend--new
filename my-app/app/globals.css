@@ -726,3 +726,260 @@ header {
   z-index: 0;
   pointer-events: none;
 }
+
+/* ── Login Animated Background ─────────────────────────────── */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(50px, -70px) scale(1.15);
+  }
+  66% {
+    transform: translate(-40px, 40px) scale(0.92);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(-60px, 60px) scale(0.9);
+  }
+  66% {
+    transform: translate(45px, -50px) scale(1.12);
+  }
+}
+
+@keyframes float-drift {
+  0%, 100% {
+    transform: translate(0px, 0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate(70px, -60px) rotate(20deg) scale(1.18);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes grid-drift {
+  0% {
+    background-position: 0px 0px;
+  }
+  100% {
+    background-position: 56px 56px;
+  }
+}
+
+@keyframes float-particle {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) scale(0.8);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-55px) translateX(30px) scale(1.3);
+    opacity: 0.95;
+  }
+}
+
+@keyframes aurora-wave {
+  0%, 100% {
+    transform: rotate(-15deg) translateY(-10%) scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: rotate(8deg) translateY(12%) scale(1.2);
+    opacity: 0.65;
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 7s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 8s ease-in-out infinite;
+}
+
+.animate-float-drift {
+  animation: float-drift 9s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 5s ease-in-out infinite;
+}
+
+.animate-grid-drift {
+  animation: grid-drift 25s linear infinite;
+}
+
+.animate-particle-1 {
+  animation: float-particle 5s ease-in-out infinite;
+}
+
+.animate-particle-2 {
+  animation: float-particle 7s ease-in-out infinite 1s;
+}
+
+.animate-particle-3 {
+  animation: float-particle 6s ease-in-out infinite 2s;
+}
+
+.animate-particle-4 {
+  animation: float-particle 8s ease-in-out infinite 1s;
+}
+
+.animate-particle-5 {
+  animation: float-particle 5.5s ease-in-out infinite 2.5s;
+}
+
+.animate-aurora-wave {
+  animation: aurora-wave 7s ease-in-out infinite;
+}
+
+/* ── Rich Animated Background Layers ───────────────────────── */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-reverse-slow {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes ripple-wave {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes beam-slide {
+  0% {
+    transform: translateX(-80%) translateY(-80%) rotate(35deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.7;
+  }
+  75% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateX(120%) translateY(120%) rotate(35deg);
+    opacity: 0;
+  }
+}
+
+@keyframes float-badge-1 {
+  0%, 100% {
+    transform: translateY(0px) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(2deg);
+  }
+}
+
+@keyframes float-badge-2 {
+  0%, 100% {
+    transform: translateY(0px) rotate(1.5deg);
+  }
+  50% {
+    transform: translateY(16px) rotate(-2deg);
+  }
+}
+
+@keyframes float-badge-3 {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-18px) translateX(10px) scale(1.03);
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.4);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 16s linear infinite;
+}
+
+.animate-spin-reverse-slow {
+  animation: spin-reverse-slow 14s linear infinite;
+}
+
+.animate-ripple-1 {
+  animation: ripple-wave 5s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+.animate-ripple-2 {
+  animation: ripple-wave 5s cubic-bezier(0, 0.2, 0.8, 1) infinite 1.7s;
+}
+
+.animate-ripple-3 {
+  animation: ripple-wave 5s cubic-bezier(0, 0.2, 0.8, 1) infinite 3.4s;
+}
+
+.animate-beam-slide {
+  animation: beam-slide 6s ease-in-out infinite;
+}
+
+.animate-float-badge-1 {
+  animation: float-badge-1 5s ease-in-out infinite;
+}
+
+.animate-float-badge-2 {
+  animation: float-badge-2 6s ease-in-out infinite 1s;
+}
+
+.animate-float-badge-3 {
+  animation: float-badge-3 7s ease-in-out infinite 2s;
+}
+
+.animate-twinkle-1 {
+  animation: twinkle 2.5s ease-in-out infinite;
+}
+
+.animate-twinkle-2 {
+  animation: twinkle 3s ease-in-out infinite 1s;
+}
+
+.animate-twinkle-3 {
+  animation: twinkle 3.5s ease-in-out infinite 0.5s;
+}
+
